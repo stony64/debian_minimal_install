@@ -7,7 +7,7 @@
 #
 ####################################################
 
-# Exit on errors
+# Exit on errors, unset variables, and pipeline failures
 set -euo pipefail
 
 # Clear the screen
@@ -46,7 +46,8 @@ initialize_log() {
 # Function to print log messages
 log() {
     local message="$1"
-    local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+    local timestamp
+    timestamp=$(date +"%Y-%m-%d %H:%M:%S")
     echo -e "\n${CYAN}$timestamp | $message${NC}\n"
     echo "$timestamp | $message" >>"$LOGFILE"
 }
@@ -54,7 +55,8 @@ log() {
 # Function to print error messages
 error() {
     local message="ERROR: $1"
-    local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+    local timestamp
+    timestamp=$(date +"%Y-%m-%d %H:%M:%S")
     echo -e "\n${RED}$timestamp | $message${NC}\n" >&2
     echo "$timestamp | $message" >>"$LOGFILE"
 }
@@ -62,7 +64,8 @@ error() {
 # Function to print success messages
 success() {
     local message="SUCCESS: $1"
-    local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+    local timestamp
+    timestamp=$(date +"%Y-%m-%d %H:%M:%S")
     echo -e "\n${GREEN}$timestamp | $message${NC}\n"
     echo "$timestamp | $message" >>"$LOGFILE"
 }
@@ -70,7 +73,8 @@ success() {
 # Function to print warning messages
 warning() {
     local message="WARNING: $1"
-    local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+    local timestamp
+    timestamp=$(date +"%Y-%m-%d %H:%M:%S")
     echo -e "\n${YELLOW}$timestamp | $message${NC}\n"
     echo "$timestamp | $message" >>"$LOGFILE"
 }
@@ -253,28 +257,18 @@ setup_network_interfaces() {
 auto lo
 iface lo inet loopback
 iface lo inet6 loopback
-EOL
-
-    if [ -n "$IPV4" ]; then
-        cat <<EOL >>"$interfaces_file"
 
 auto eth0
 iface eth0 inet static
         address $IPV4/24
         netmask $NETMASK_IPV4
         gateway $GATEWAY_IPV4
-EOL
-    fi
-
-    if [ -n "$IPV6" ]; then
-        cat <<EOL >>"$interfaces_file"
 
 iface eth0 inet6 static
         address $IPV6/64
         netmask $NETMASK_IPV6
         gateway $GATEWAY_IPV6
 EOL
-    fi
 
     success "Network configuration updated successfully."
 }
@@ -315,18 +309,9 @@ create_sudo_user() {
     success "User $NEW_USERNAME created successfully with sudo privileges and added to /etc/sudoers.d/."
 }
 
-# Function to setup SSH access
+# Function to setup SSH access and get SSH key
 setup_ssh_access() {
     log "Setting up SSH access..."
-    get_ssh_key || {
-        error "Failed to get SSH key."
-        return 1
-    }
-    success "SSH access set up successfully."
-}
-
-# Function to get SSH key and save to authorized_keys
-get_ssh_key() {
     log "Please paste your SSH key (*.pub) here:"
     read -r ssh_key
 
@@ -352,6 +337,8 @@ get_ssh_key() {
         echo "$ssh_key" >>"$authorized_keys_file"
         success "SSH key added successfully to authorized_keys file for $NEW_USERNAME."
     fi
+
+    success "SSH access set up successfully."
 }
 
 # Function to create advanced SSH configuration file
@@ -400,10 +387,10 @@ EOL
     fi
 }
 
- # Function to create backup directory for nano
+# Function to create backup directory for nano
 create_backup_directory_nano() {
     mkdir -p "$BACKUP_DIR_NANO" && success "Directory $BACKUP_DIR_NANO created successfully for root." || warning "Directory $BACKUP_DIR_NANO already exists for root."
-    
+
     local user_backup_dir="/home/$NEW_USERNAME/.nano/backups"
     mkdir -p "$user_backup_dir" && success "Directory $user_backup_dir created successfully for $NEW_USERNAME." || warning "Directory $user_backup_dir already exists for $NEW_USERNAME."
     chown -R "$NEW_USERNAME:$NEW_USERNAME" "/home/$NEW_USERNAME/.nano"
@@ -554,7 +541,7 @@ main() {
     create_backup_directory_nano || {
         warning "Failed to create backup directory for nano."
     }
-     download_and_backup_hostfiles || {
+    download_and_backup_hostfiles || {
         warning "Failed to download and backup host configuration files."
     }
     clean_system
