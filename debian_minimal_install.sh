@@ -295,6 +295,8 @@ iface eth0 inet6 static
         gateway $GATEWAY_IPV6
 EOL
 
+    chmod 644 "$eth0_file"
+    
     success "Network configuration updated successfully."
 }
 
