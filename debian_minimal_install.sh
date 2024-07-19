@@ -242,9 +242,10 @@ setup_hostname() {
     success "Hostname set successfully to $new_hostname."
 }
 
-# Function to configure network interfaces
 setup_network_interfaces() {
     local interfaces_file="/etc/network/interfaces"
+    local interfaces_dir="/etc/network/interfaces.d"
+    local eth0_file="$interfaces_dir/eth0"
     local backup_file="/etc/network/interfaces.bak"
 
     cp "$interfaces_file" "$backup_file" && success "Backup of $interfaces_file created successfully." || warning "Failed to create backup for $interfaces_file."
@@ -258,6 +259,30 @@ auto lo
 iface lo inet loopback
 iface lo inet6 loopback
 
+source $interfaces_dir
+EOL
+
+    mkdir -p "$interfaces_dir" || {
+        error "Failed to create directory $interfaces_dir"
+        return 1
+    }
+
+    # Prüfen, ob die Datei eth0 vorhanden ist
+    if [ -f "$eth0_file" ]; then
+        local backup_eth0_file="$eth0_file.bak"
+        cp "$eth0_file" "$backup_eth0_file" && success "Backup of $eth0_file created successfully." || warning "Failed to create backup for $eth0_file."
+        truncate -s 0 "$eth0_file" || {
+            error "Failed to truncate $eth0_file"
+            return 1
+        }
+    else
+        touch "$eth0_file" || {
+            error "Failed to create $eth0_file"
+            return 1
+        }
+    fi
+
+    cat <<EOL >>"$eth0_file"
 auto eth0
 iface eth0 inet static
         address $IPV4/24
