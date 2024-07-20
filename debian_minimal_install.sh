@@ -255,7 +255,9 @@ setup_network_interfaces() {
     }
 
     cat <<EOL >>"$interfaces_file"
+
 auto lo
+
 iface lo inet loopback
 iface lo inet6 loopback
 
@@ -284,6 +286,7 @@ EOL
 
     cat <<EOL >>"$eth0_file"
 auto eth0
+
 iface eth0 inet static
         address $IPV4/24
         netmask $NETMASK_IPV4
