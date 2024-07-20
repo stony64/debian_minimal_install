@@ -259,7 +259,7 @@ auto lo
 iface lo inet loopback
 iface lo inet6 loopback
 
-source $interfaces_dir
+source $interfaces_dir/*
 EOL
 
     mkdir -p "$interfaces_dir" || {
