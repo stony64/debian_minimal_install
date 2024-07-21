@@ -178,8 +178,7 @@ cp "$apt_source_list_file" "$apt_source_list_backup_file" && success "Backup of 
         return 1
     }
 
-cat <<EOL >>"$apt_source_list_file"
-
+    cat <<EOL >>"$apt_source_list_file"
 deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
 deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
 deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
