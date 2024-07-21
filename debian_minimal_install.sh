@@ -255,7 +255,6 @@ setup_network_interfaces() {
     }
 
     cat <<EOL >>"$interfaces_file"
-
 auto lo
 
 iface lo inet loopback
