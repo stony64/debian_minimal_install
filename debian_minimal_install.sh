@@ -166,6 +166,30 @@ collect_user_inputs() {
     confirm_inputs
 }
 
+# Fuinction to set source-list
+
+set_apt_source() {
+local apt_source_list_file="/etc/apt/sources.list"
+local apt_source_list_backup_file="/etc/apt/sources.list.bak"
+
+cp "$apt_source_list_file" "$apt_source_list_backup_file" && success "Backup of $apt_source_list_file created successfully." || warning "Failed to create backup for $apt_source_list_file."
+    truncate -s 0 "$apt_source_list_file" || {
+        error "Failed to truncate $apt_source_list_file"
+        return 1
+    }
+
+cat <<EOL >>"$apt_source_list_file"
+
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+# Backports are _not_ enabled by default.
+# Enable them by uncommenting the following line:
+# deb http://deb.debian.org/debian bookworm-backports main non-free-firmware
+EOL
+
+}
+
 # Function to update the system
 update_system() {
     log "Updating system..."
@@ -525,6 +549,10 @@ main() {
 
     collect_user_inputs || {
         error "Error in user inputs."
+        return 1
+    }
+    set_apt_source || {
+        error "Failed to set apt source list."
         return 1
     }
     update_system || {
