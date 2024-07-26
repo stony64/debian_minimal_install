@@ -139,3 +139,66 @@ EOL
 
     success "Changes have been applied. The watchdog.conf file has been updated."
 }
+
+# Function to check network status
+# Source: https://blog.doenselmann.com/raspberry-pi-fuer-dauereinsatz-optimieren/
+edit_check_network(){
+    log "Install Network_Check...."
+    local script_path="/opt/scripts"
+    local network_service_file="/opt/scripts/network_status.sh"
+    local network_status_service="/etc/systemd/system/network_status.service"
+    local network_status_timer="/etc/systemd/system/network_status.timer"
+    
+    mkdir -p "$scripts_path" || {
+        error "Failed to create directory $scripts_path"
+        return 1
+    }
+
+    cat <<EOL >>"$network_service_file"
+#!/bin/bash
+
+# global variables
+gateway="192.168.10.1"
+interface="eth0"
+
+# Ping gateway for network status test
+ping -c4 $gateway > /dev/null
+
+# if gateway is not reachable, restart the network interface 
+if [ $? != 0 ] 
+then
+  ifdown $interface
+  sleep 3
+  ifup --force $interface
+fi
+EOL
+
+    cat <<EOL >>"network_status_service"
+[Unit]
+Description=Check Network Status
+
+[Service]
+Type=simple
+ExecStart=/opt/scripts/network_status.sh 
+EOL
+
+    cat <<EOL >>"network_status_timer"
+[Unit]
+Description=Runs Check Network Status every 20 minutes
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=20min
+Unit= network_status.service
+
+[Install]
+WantedBy=multi-user.target
+EOL
+
+    chmod +x "$network_service_file"
+    
+    systemctl enable network_status.timer
+    systemctl start network_status.timer
+
+    success "Network_Check succesfully installed."
+} 
