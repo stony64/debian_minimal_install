@@ -102,15 +102,15 @@ install_required_software() {
 edit_chrony() {
     log "Edit chrony.conf..."
     local chrony_config_file="/etc/chrony/chrony.conf"
-    local backup_chrony_config_file="/etc/chrony.conf.ori"
+    local backup_chrony_config_file="/etc/chrony/chrony.conf.ori"
 
     cp "$chrony_config_file" "$backup_chrony_config_file" && success "Backup of $chrony_config_file created successfully." || warning "Failed to create backup for $chrony_config_file."
 
     # Comment out the line starting with "pool" and add the new server
     sed -i '/^pool/{s/^/# /; n; s/.*/server 192.168.10.1 iburst/}' "$chrony_config_file"
 
-    systemctl restart chronyd || {
-        error "Failed to restart chronyd service"
+    systemctl restart chrony || {
+        error "Failed to restart chrony service"
         return 1
     }
 
@@ -121,7 +121,7 @@ edit_chrony() {
 edit_watchdog() {
     log "Edit watchdog.conf..."
     local watchdog_config_file="/etc/watchdog.conf"
-    local backup_watchdog_config_file="/etc/watchdog.conf.ori"
+    local backup_watchdog_config_file="/etc/watchdog/watchdog.conf.ori"
 
     cp "$watchdog_config_file" "$backup_watchdog_config_file" && success "Backup of $watchdog_config_file created successfully." || warning "Failed to create backup for $watchdog_config_file."
     truncate -s 0 "$watchdog_config_file" || {
@@ -132,26 +132,26 @@ edit_watchdog() {
     cat <<EOL >>"$watchdog_config_file"
 watchdog-device     = /dev/watchdog
 watchdog-timeout    = 15
-log-dir        = /var/log/watchdog
-realtime        = yes
-priority        = 1
-max-load-1      = 24
+log-dir             = /var/log/watchdog
+realtime            = yes
+priority            = 1
+max-load-1          = 24
 EOL
 
     systemctl restart watchdog || {
-        echo "Failed to restart watchdog service."
+        error "Failed to restart watchdog service."
         return 1
     }
 
     success "Changes have been applied. The watchdog.conf file has been updated."
 }
 
-# Function to check network status
+# Function to install network status check script
 # Source: https://blog.doenselmann.com/raspberry-pi-fuer-dauereinsatz-optimieren/
 edit_check_network() {
     log "Install Network_Check...."
     local script_path="/opt/scripts"
-    local network_service_file="/opt/scripts/network_status.sh"
+    local network_service_file="$script_path/network_status.sh"
     local network_status_service="/etc/systemd/system/network_status.service"
     local network_status_timer="/etc/systemd/system/network_status.timer"
 
@@ -162,7 +162,6 @@ edit_check_network() {
 
     cat <<EOL >"$network_service_file"
 
-
 # global variables
 gateway="192.168.10.1"
 interface="eth0"
@@ -171,15 +170,14 @@ interface="eth0"
 ping -c4 \$gateway > /dev/null
 
 # if gateway is not reachable, restart the network interface 
-if [ $? != 0 ] 
-then
+if [ \$? != 0 ]; then
   ifdown \$interface
   sleep 3
   ifup --force \$interface
 fi
 EOL
 
-    cat <<EOL >"network_status_service"
+    cat <<EOL >"$network_status_service"
 [Unit]
 Description=Check Network Status
 
@@ -188,17 +186,17 @@ Type=simple
 ExecStart=/opt/scripts/network_status.sh 
 EOL
 
-    cat <<EOL >"network_status_timer"
+    cat <<EOL >"$network_status_timer"
 [Unit]
 Description=Runs Check Network Status every 20 minutes
 
 [Timer]
 OnBootSec=10min
 OnUnitActiveSec=20min
-Unit= network_status.service
+Unit=network_status.service
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=timers.target
 EOL
 
     chmod +x "$network_service_file"
@@ -206,7 +204,7 @@ EOL
     systemctl enable network_status.timer
     systemctl start network_status.timer
 
-    success "Network_Check succesfully installed."
+    success "Network_Check successfully installed."
 }
 
 # Function to clean up variables and system
@@ -226,7 +224,7 @@ reboot_system() {
     while true; do
         read -p "Do you want to reboot the system now? (y/n): " choice
         case "$choice" in
-        j | J | y | Y)
+        y | Y)
             log "Rebooting system..."
             reboot
             break
@@ -247,32 +245,32 @@ main() {
     initialize_log
 
     update_system || {
-        error "Error system_update."
+        error "Error updating system."
         return 1
     }
 
-    install_required_package || {
-        error "Error install required packages."
+    install_required_packages || {
+        error "Error installing required packages."
         return 1
     }
 
     install_required_software || {
-        error "Error install requiered software."
+        error "Error installing required software."
         return 1
     }
 
     edit_chrony || {
-        error "Error edit Chrony config file."
+        error "Error editing chrony config file."
         return 1
     }
 
     edit_watchdog || {
-        error "Error install watchdog."
+        error "Error editing watchdog config file."
         return 1
     }
 
     edit_check_network || {
-        error "Error edit_check_network."
+        error "Error installing network check."
         return 1
     }
 
