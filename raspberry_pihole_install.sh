@@ -208,3 +208,77 @@ EOL
 
     success "Network_Check succesfully installed."
 }
+
+# Function to clean up variables and system
+clean_system() {
+    log "Resetting variables and cleaning up system..."
+
+    apt autoremove -y
+    apt autoclean
+    apt clean
+    sync
+
+    success "System cleaned up."
+}
+
+# Function to prompt for system reboot
+reboot_system() {
+    while true; do
+        read -p "Do you want to reboot the system now? (y/n): " choice
+        case "$choice" in
+        j | J | y | Y)
+            log "Rebooting system..."
+            reboot
+            break
+            ;;
+        n | N)
+            log "Please remember to reboot the system later."
+            break
+            ;;
+        *)
+            warning "Please respond with yes (y) or no (n)."
+            ;;
+        esac
+    done
+}
+
+# Main part of the script
+main() {
+    initialize_log
+
+    update_system || {
+        error "Error system_update."
+        return 1
+    }
+
+    install_required_package || {
+        error "Error install required packages."
+        return 1
+    }
+
+    install_required_software || {
+        error "Error install requiered software."
+        return 1
+    }
+
+    edit_chrony || {
+        error "Error edit Chrony config file."
+        return 1
+    }
+    
+    edit_watchdog || {
+        error "Error install watchdog."
+        return 1
+    }
+
+    edit_check_network || {
+        error "Error edit_check_network."
+        return 1
+        }
+
+    clean_system
+    reboot_system
+}
+
+# Start the script
+main
