@@ -87,7 +87,7 @@ prompt_input() {
     while true; do
         read -p "$prompt" value
         if [ -n "$value" ]; then
-            eval "$var_name='$value'"
+            declare -g "$var_name=$value"
             break
         else
             warning "Input cannot be empty. Please try again."
@@ -127,9 +127,9 @@ confirm_inputs() {
 
         read -p "Are these details correct? (y/n): " choice
         case "$choice" in
-        y | Y) break ;;
-        n | N) collect_user_inputs ;;
-        *) warning "Invalid choice. Please enter 'y' or 'n'." ;;
+            y | Y) break ;;
+            n | N) collect_user_inputs ;;
+            *) warning "Invalid choice. Please enter 'y' or 'n'." ;;
         esac
     done
 }
@@ -166,19 +166,19 @@ collect_user_inputs() {
     confirm_inputs
 }
 
-# Fuinction to set source-list
-
+# Function to set source-list
 set_apt_source() {
-local apt_source_list_file="/etc/apt/sources.list"
-local apt_source_list_backup_file="/etc/apt/sources.list.bak"
+    local apt_source_list_file="/etc/apt/sources.list"
+    local apt_source_list_backup_file="/etc/apt/sources.list.bak"
 
-cp "$apt_source_list_file" "$apt_source_list_backup_file" && success "Backup of $apt_source_list_file created successfully." || warning "Failed to create backup for $apt_source_list_file."
+    cp "$apt_source_list_file" "$apt_source_list_backup_file" && success "Backup of $apt_source_list_file created successfully." || warning "Failed to create backup for $apt_source_list_file."
+    
     truncate -s 0 "$apt_source_list_file" || {
         error "Failed to truncate $apt_source_list_file"
         return 1
     }
 
-    cat <<EOL >>"$apt_source_list_file"
+    cat <<EOL >"$apt_source_list_file"
 deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
 deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
 deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
@@ -186,7 +186,6 @@ deb http://security.debian.org/debian-security bookworm-security main contrib no
 # Enable them by uncommenting the following line:
 # deb http://deb.debian.org/debian bookworm-backports main non-free-firmware
 EOL
-
 }
 
 # Function to update the system
@@ -333,20 +332,20 @@ create_sudo_user() {
         warning "User '$NEW_USERNAME' already exists."
         read -p "Do you want to delete the user and recreate? (y/n): " choice
         case "$choice" in
-        j | J | y | Y)
-            visudo -c /etc/sudoers || {
-                error "Syntax check failed for sudoers file"
-                return 1
-            }
-            sed -i "/^$NEW_USERNAME/d" /etc/sudoers
-            rm -f "/etc/sudoers.d/$NEW_USERNAME"
-            sudo userdel -r "$NEW_USERNAME"
-            log "User '$NEW_USERNAME' deleted."
-            ;;
-        *)
-            warning "User not recreated."
-            return
-            ;;
+            y | Y)
+                visudo -c /etc/sudoers || {
+                    error "Syntax check failed for sudoers file"
+                    return 1
+                }
+                sed -i "/^$NEW_USERNAME/d" /etc/sudoers
+                rm -f "/etc/sudoers.d/$NEW_USERNAME"
+                sudo userdel -r "$NEW_USERNAME"
+                log "User '$NEW_USERNAME' deleted."
+                ;;
+            *)
+                warning "User not recreated."
+                return
+                ;;
         esac
     fi
 
@@ -526,18 +525,18 @@ reboot_system() {
     while true; do
         read -p "Do you want to reboot the system now? (y/n): " choice
         case "$choice" in
-        j | J | y | Y)
-            log "Rebooting system..."
-            reboot
-            break
-            ;;
-        n | N)
-            log "Please remember to reboot the system later."
-            break
-            ;;
-        *)
-            warning "Please respond with yes (y) or no (n)."
-            ;;
+            j | J | y | Y)
+                log "Rebooting system..."
+                reboot
+                break
+                ;;
+            n | N)
+                log "Please remember to reboot the system later."
+                break
+                ;;
+            *)
+                warning "Please respond with yes (y) or no (n)."
+                ;;
         esac
     done
 }

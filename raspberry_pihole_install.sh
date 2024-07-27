@@ -265,7 +265,7 @@ main() {
         error "Error edit Chrony config file."
         return 1
     }
-    
+
     edit_watchdog || {
         error "Error install watchdog."
         return 1
@@ -274,7 +274,7 @@ main() {
     edit_check_network || {
         error "Error edit_check_network."
         return 1
-        }
+    }
 
     clean_system
     reboot_system
