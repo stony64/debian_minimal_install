@@ -179,12 +179,12 @@ set_apt_source() {
     }
 
     cat <<EOL >"$apt_source_list_file"
-deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
-deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+deb https://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb https://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+deb https://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
 # Backports are _not_ enabled by default.
 # Enable them by uncommenting the following line:
-# deb http://deb.debian.org/debian bookworm-backports main non-free-firmware
+# deb https://deb.debian.org/debian bookworm-backports main non-free-firmware
 EOL
 }
 
