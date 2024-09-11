@@ -157,13 +157,18 @@ setAptSource() {
 
     cp "$aptSourceListFile" "$aptSourceListBackupFile" && log_success "Backup of $aptSourceListFile created successfully." || log_warning "Failed to create backup for $aptSourceListFile."
     
-    cat <<EOL >"$aptSourceListFile"
+    truncate -s 0 "$apt_source_list_file" || {
+        error "Failed to truncate $apt_source_list_file"
+        return 1
+    }
+
+    cat <<EOL >"$apt_source_list_file"
 deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
 deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
 deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
 # Backports are _not_ enabled by default.
 # Enable them by uncommenting the following line:
-# deb http://deb.debian.org/debian bookworm-backports main non-free-firmware
+# deb https://deb.debian.org/debian bookworm-backports main non-free-firmware
 EOL
 }
 
