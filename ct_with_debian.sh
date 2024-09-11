@@ -2,7 +2,7 @@
 
 ####################################################
 # Debian Container Install Script by Stony64
-# Version: 0.4.0
+# Version: 0.5.0
 # Initial Release: 09/2024
 ####################################################
 
@@ -35,7 +35,7 @@ NET="vmbr0"             # Network bridge
 BASE_CT_IPV4="192.168.10."
 BASE_CT_IPV6="fd00:1234:abcd:10::"
 CT_GATEWAY_IPV4="192.168.10.1"
-CT_GATEWAY_IPV6="fd00:1234:abcd:10::1"
+CT_GATEWAY_IPV6="fd00:1234:abcd:10:3ea6:2fff:fe65:8fa7"
 
 # Check if the template is already downloaded
 if ! pveam list local | grep -q "$TEMPLATE"; then
@@ -100,16 +100,36 @@ pct create "$CT_ID" "$TEMPLATE_FULL_NAME" \
     --cores "$CPU_CORES" \
     --memory "$RAM" \
     --swap "$SWAP" \
-    --net0 name=eth0,bridge="$NET",ip="$ipv4/24",gw="$CT_GATEWAY_IPV4",ip6="$ipv6/64",gw6="$CT_GATEWAY_IPV6" \
+    --net0 name="eth0",bridge="$NET",ip="$ipv4/24",gw="$CT_GATEWAY_IPV4",ip6="$ipv6/64",gw6="$CT_GATEWAY_IPV6" \
     --rootfs "$STORAGE:$DISK_SIZE" \
     --features "mount=nfs;cifs,nesting=1" \
     --onboot "1" \
     --start 1
 
+# Wait for the container to start
+echo "Wait 10 seconds for the container to start"
+  sleep 10
+
 # Check if the container was created successfully
 if pct status "$CT_ID" | grep -q 'running'; then
     echo "Container $CT_ID created and started successfully."
-else
+    echo "Enabling root login via SSH..."
+
+    # Enable root login via SSH
+    pct exec "$CT_ID" -- sed -i 's/^#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+    pct exec "$CT_ID" -- systemctl restart ssh
+
+    echo "Root login via SSH has been enabled."
+
+     # Download the script and make it executable
+    echo "Downloading and setting up installation script..."
+    pct exec "$CT_ID" -- mkdir -p /opt/scripts/install
+    pct exec "$CT_ID" -- wget -O /opt/scripts/install/ct_debian_minimal_install.sh https://raw.githubusercontent.com/stony64/debian_minimal_install/main/ct_debian_minimal_install.sh
+    pct exec "$CT_ID" -- chmod +x /opt/scripts/install/ct_debian_minimal_install.sh
+
+    echo "Installation script downloaded and made executable."
+    
+    else
     echo "Error: Container $CT_ID was not started successfully."
     exit 1
 fi

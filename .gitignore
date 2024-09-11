@@ -23,3 +23,6 @@
 
 # Backup *.ori
 *.ori
+
+#Backup *.bak
+*.bak
