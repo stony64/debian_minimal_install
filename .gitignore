@@ -20,3 +20,6 @@
 
 # Built Visual Studio Code Extensions
 *.vsix
+
+# Backup *.ori
+*.ori
