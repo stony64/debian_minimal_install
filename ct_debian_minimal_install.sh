@@ -251,7 +251,7 @@ create_advanced_ssh_config() {
 
     # Create the SSH configuration file with advanced settings
     cat <<EOL >"$SSH_CONFIG_FILE"
-Port $shPort                               # Define the port SSH will listen on
+Port $shPort                                # Define the port SSH will listen on
 Protocol 2                                  # Use SSH Protocol 2
 PermitRootLogin prohibit-password           # Disallow root login with password, but allow key-based login
 PasswordAuthentication no                   # Disable password authentication
@@ -264,7 +264,7 @@ MaxAuthTries 3                              # Maximum number of authentication a
 ClientAliveInterval 600                     # Interval in seconds to send keep-alive messages
 ClientAliveCountMax 2                       # Number of keep-alive messages before disconnecting
 LogLevel VERBOSE                            # Set logging level to verbose for detailed logs
-AllowUsers root, $newUsername                     # Allow only specified user to connect
+AllowUsers root, $newUsername               # Allow only specified user to connect
 AllowTcpForwarding no                       # Disable TCP forwarding
 X11Forwarding no                            # Disable X11 forwarding
 PermitTunnel no                             # Disable tunneling
