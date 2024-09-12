@@ -2,121 +2,344 @@
 
 ####################################################
 # Debian Container Install Script by Stony64
-# Version: 0.5.0
 # Initial Release: 09/2024
 ####################################################
 
 # Exit on errors, unset variables, and pipeline failures
+# ------------------------------------------------------------------
+# This causes the script to terminate if any command in the pipeline
+# fails. Additionally, it will log an error and exit with a status code
+# of 1 if any command raises an error.
+#
 set -euo pipefail
+trap 'log_error "Script terminated unexpectedly."; exit 1;' ERR
 
-# Clear the screen for clarity
+# Clear the screen to make the output more readable
 clear
 
 # Ensure script is run as root
-if [[ "$(id -u)" -ne 0 ]]; then
-    echo "Error: This script must be run as root."
+if [[ $EUID -ne 0 ]]; then
+    log_error "This script must be run as root."
     exit 1
 fi
 
-# Variables
-CT_HOSTNAME=""                              # Container name (will be prompted)
-CT_ID=$(pvesh get /cluster/nextid)          # Get next available container ID
-ROOT_PASSWORD=""                            # Root password (will be prompted)
-TEMPLATE_NAME="debian-12-standard_12.2-1_amd64.tar.zst"
-TEMPLATE_PATH="/var/lib/vz/template/cache"  # Path to the Proxmox container template
-STORAGE="VM_CON_1TB"                        # Storage allocation for the container
-DISK_SIZE="8"                               # Disk size in GB
-RAM="512"                                   # RAM size in MB
-SWAP="512"                                  # Swap size in MB
-CPU_CORES="1"                               # Number of CPU cores
-NET="vmbr0"                                 # Network bridge
+# Constants (readonly)
+# ----------------------
 
-# Network settings
-BASE_CT_IPV4="192.168.10."                   # Base IPv4 subnet for containers
-BASE_CT_IPV6="fd00:1234:abcd:10::"           # Base IPv6 subnet for containers
-CT_GATEWAY_IPV4="192.168.10.1"               # IPv4 Gateway for the containers
-CT_GATEWAY_IPV6="fd00:1234:abcd:10:3ea6:2fff:fe65:8fa7" # IPv6 Gateway
+# Name of the script
+readonly SCRIPT_NAME="$(basename "$0")"
+# Directory where the script is located
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Version of the script
+readonly SCRIPT_VERSION="0.7.0"
+# Log file for the script
+readonly LOG_FILE="/var/log/${SCRIPT_NAME}.log"
 
-# Check if the template is already downloaded, if not download it
-if ! pveam list local | grep -q "$TEMPLATE_NAME"; then
-    echo "Template not found locally. Downloading..."
-    pveam download local "$TEMPLATE_NAME" || { echo "Failed to download template"; exit 1; }
+# Container settings
+# -------------------
+#
+# These variables are used to configure the container creation
+#
+readonly templateName="debian-12-standard_12.2-1_amd64.tar.zst" # Name of the template
+readonly templatePath="/var/lib/vz/template/cache"              # Path to the template
+readonly storage="VM_CON_1TB"                                   # Storage name
+readonly baseCtIpv4="192.168.10."                               # Base IPv4 address
+readonly baseCtIpv6="fd00:1234:abcd:10::"                       # Base IPv6 address
+readonly ctGatewayIpv4="192.168.10.1"                           # Gateway IPv4 address
+readonly ctGatewayIpv6="fd00:1234:abcd:10:3ea6:2fff:fe65:8fa7"  # Gateway IPv6 address
+
+# Variables for container configuration
+ctHostname=""                                # Container name (will be prompted)
+ctId=$(pvesh get /cluster/nextid)            # Get next available container ID
+rootPassword=""                              # Root password (will be prompted)
+diskSize="8"                                 # Disk size in GB
+ram="512"                                    # RAM size in MB
+swap="512"                                   # Swap size in MB
+cpuCores="1"                                 # Number of CPU cores
+netBridge="vmbr0"                            # Network bridge
+ipv4=""                                      # Full IPv4 address
+ipv6=""                                      # Full IPv6 address
+
+# Set colors for output
+# ----------------------
+#
+# These are used for logging output
+#
+readonly RED='\e[0;31m'     # Red color
+readonly GREEN='\e[0;32m'   # Green color
+readonly YELLOW='\e[0;33m'  # Yellow color
+readonly CYAN='\e[0;36m'    # Cyan color
+readonly NC='\e[0m'         # No Color (reset)
+
+# Command-line options for help and version
+#
+# Check if any command-line options were provided
+#
+if [[ -n "${1:-}" ]]; then
+    case "$1" in
+        -h)
+            # Print help message
+            echo "Usage: $SCRIPT_NAME [-h] [-v]"
+            echo "  -h  Display this help message"
+            echo "  -v  Display script version"
+            exit 0
+            ;;
+        -v)
+            # Print version number
+            echo "$SCRIPT_NAME"
+            echo "version $SCRIPT_VERSION"
+            exit 0
+            ;;
+        *)
+            # Print error for invalid option
+            echo "Invalid option: $1" >&2
+            echo "Usage: $SCRIPT_NAME [-h] [-v]" >&2
+            exit 1
+            ;;
+    esac
 fi
 
-# Function to prompt user for input with validation
-prompt_input() {
-    local prompt_message="$1"
-    local variable_name="$2"
+# Function to rotate log files if they exceed a certain size
+#
+# This function will rotate the log file if it exceeds the specified size
+# by renaming the old log file to a numbered backup, and then creating a
+# new empty log file.
+#
+# Parameters:
+#   - max_size: maximum log file size in bytes (default: 100KB)
+#   - backup_count: number of backup log files to keep (default: 3)
+#
+rotate_logs() {
+    local log_file="$LOG_FILE"
+    local max_size=102400  # Maximum log file size in bytes (e.g., 100KB)
+    local backup_count=3   # Number of backup log files to keep
 
-    # Continuously prompt user until a valid input is given
+    # Check if the log file exists and is larger than the maximum size
+    if [[ -f "$log_file" && $(stat -c%s "$log_file") -ge $max_size ]]; then
+        log_info "Log file exceeds max size of $((max_size / 1024))KB. Rotating logs..."
+
+        # Rotate logs by renaming old logs and removing the oldest backup if necessary
+        for ((i=backup_count - 1; i>=1; i--)); do
+            if [[ -f "$log_file.$i" ]]; then
+                mv "$log_file.$i" "$log_file.$((i + 1))"
+            fi
+        done
+        
+        # Rename the current log to the first backup
+        mv "$log_file" "$log_file.1"
+
+        # Create a new empty log file
+        : > "$log_file"
+        log_info "Log rotation complete."
+    fi
+}
+
+# Logs a message with a color and timestamp
+#
+# Parameters:
+#   logLevel: a string with the log level (e.g., "INFO", "ERROR", etc.)
+#   logColor: a string with the color code for the log level (e.g., "$CYAN", "$RED", etc.)
+#   logMessage: the message to log
+#
+log_message() {
+    local logLevel="$1"
+    local logColor="$2"
+    local logMessage="$3"
+    local logTimestamp
+    logTimestamp="$(date '+%Y-%m-%d %H:%M:%S')"
+
+    printf '%b[%s] %s: %s%b\n' "$logColor" "$logTimestamp" "$logLevel" "$logMessage" "$NC" | tee -a "$LOG_FILE"
+}
+
+# Convenience functions for logging messages at different levels
+log_info()      { log_message "INFO" "$CYAN" "$1"; }
+log_error()     { log_message "ERROR" "$RED" "$1"; }
+log_success()   { log_message "SUCCESS" "$GREEN" "$1"; }
+log_warning()   { log_message "WARNING" "$YELLOW" "$1"; }
+
+# Prompts the user for input with validation.
+#
+# Parameters:
+#   promptMessage: a string with the message to display to the user
+#   variableName: a string with the name of the global variable to set
+#   validation: a string with a regular expression to validate the input
+#
+prompt_input() {
+    local promptMessage="$1"
+    local variableName="$2"
+    local validation="$3"
+
     while true; do
-        read -r -p "$prompt_message" input
-        if [[ -n "$input" ]]; then
-            declare -g "$variable_name"="$input"  # Dynamically set the global variable
-            break
+        read -r -p "$promptMessage" input
+
+        # Check if the input is empty
+        if [[ -z "$input" ]]; then
+            log_warning "Input cannot be empty. Please try again."
+
+        # Check if the input matches the validation regex
+        elif [[ -n "$validation" ]] && ! [[ "$input" =~ $validation ]]; then
+            log_warning "Invalid input format. Please try again."
+
+        # If the input is valid, set the global variable and break out of the loop
         else
-            echo "Warning: Input cannot be empty. Please try again."
+            declare -g "$variableName"="$input"
+            break
         fi
     done
 }
 
-# Collect necessary user inputs such as IP addresses and hostname
-collect_user_inputs() {
-    local last_octet
-    # Validate IPv4 last octet input (must be between 1 and 254)
-    while ! [[ $last_octet =~ ^[0-9]+$ ]] || ((last_octet < 1 || last_octet > 254)); do
-        read -r -p "Enter the last octet of the IPv4 address (e.g., x for 192.168.10.x): " last_octet
+# Confirms user inputs before proceeding with the script
+#
+# This function loops until the user confirms the inputs or decides to re-enter
+# the inputs.
+#
+confirm_inputs() {
+    local confirmation
+
+    while true; do
+        log_info "Summary of inputs:"
+        log_info "CT-Hostname: $ctHostname"
+        log_info "Root-Password: $rootPassword"
+
+        prompt_input "Are these details correct? (y/n): " "confirmation" '^[yYnN]$'
+        if [[ $confirmation =~ ^[yY]$ ]]; then
+            # User confirmed the inputs; break out of the loop
+            break
+        elif [[ $confirmation =~ ^[nN]$ ]]; then
+            # User wants to re-enter the inputs; call the input collection function
+            collect_user_inputs
+        else
+            # User entered an invalid choice; display an error message
+            log_warning "Invalid choice. Please enter 'y' or 'n'."
+        fi
     done
-
-    # Collect hostname and root password inputs
-    prompt_input "Enter the new hostname for the container: " "CT_HOSTNAME"
-    prompt_input "Enter root-password for the container: " "ROOT_PASSWORD"
-
-    # Set full IPv4 and IPv6 addresses using the last octet provided
-    IPV4="${BASE_CT_IPV4}${last_octet}"
-    IPV6="${BASE_CT_IPV6}${last_octet}"
 }
 
-# Start collecting user inputs
-collect_user_inputs
+# Collects user inputs for the container creation
+#
+# This function prompts the user for necessary inputs such as the hostname,
+# root password, and last octet of the IP address. It also validates the
+# inputs and sets the full IPv4 and IPv6 addresses using the last octet
+# provided.
+#
+# The inputs are validated as follows:
+# - Hostname: Alphanumeric characters and hyphens are allowed.
+# - Root password: Minimum 8 characters are required.
+# - Last octet of the IPv4 address: Must be between 1 and 254.
+#
+collect_user_inputs() {
+    local lastOctet
+    prompt_input "Enter the new hostname for the container (alphanumeric and hyphens allowed): " "ctHostname" '^[a-zA-Z0-9-]+$'
+    prompt_input "Enter root-password for the container (min. 8 characters): " "rootPassword" '.{8,}'
+
+    # Validate IPv4 last octet input (must be between 1 and 254)
+    prompt_input "Enter the last octet of the IPv4 address (e.g., x for 192.168.10.x): " "lastOctet" '^[1-9][0-9]?$|^1[0-9]{2}$|^2[0-4][0-9]$|^25[0-4]$'
+
+    confirm_inputs
+
+    # Set full IPv4 and IPv6 addresses using the last octet provided
+    ipv4="${baseCtIpv4}${lastOctet}"
+    ipv6="${baseCtIpv6}${lastOctet}"
+
+    log_info "IPv4 Address set to: $ipv4"
+    log_info "IPv6 Address set to: $ipv6"
+}
 
 # Create the LXC container with the specified IPv4 and IPv6 addresses
-echo "Creating container $CT_ID with IPv4: $IPV4 and IPv6: $IPV6"
-pct create "$CT_ID" "$TEMPLATE_PATH/$TEMPLATE_NAME" \
-    --hostname "$CT_HOSTNAME" \
-    --password "$ROOT_PASSWORD" \
-    --cores "$CPU_CORES" \
-    --memory "$RAM" \
-    --swap "$SWAP" \
-    --net0 name="eth0",bridge="$NET",ip="$IPV4/24",gw="$CT_GATEWAY_IPV4",ip6="$IPV6/64",gw6="$CT_GATEWAY_IPV6" \
-    --rootfs "$STORAGE:$DISK_SIZE" \
-    --features "mount=nfs;cifs,nesting=1" \
-    --onboot "1" \
-    --start 1
-
-# Wait for 5 seconds to ensure the container starts
-echo "Waiting 5 seconds for the container to start..."
-sleep 5
+#
+create_lxc_container() {
+    log_info "Creating container $ctId with IPv4: $ipv4 and IPv6: $ipv6"
+    if pct create "$ctId" "$templatePath/$templateName" \
+        --hostname "$ctHostname" \
+        --password "$rootPassword" \
+        --cores "$cpuCores" \
+        --memory "$ram" \
+        --swap "$swap" \
+        --net0 name="eth0",bridge="$netBridge",ip="$ipv4/24",gw="$ctGatewayIpv4",ip6="$ipv6/64",gw6="$ctGatewayIpv6" \
+        --rootfs "$storage:$diskSize" \
+        --features "mount=nfs;cifs,nesting=1" \
+        --onboot "1" \
+        --start 1; then
+        log_success "Container $ctId created successfully."
+    else
+        log_error "Failed to create container $ctId."
+        exit 1
+    fi
+}
 
 # Check the container status and proceed with further configuration if successful
-if pct status "$CT_ID" | grep -q 'running'; then
-    echo "Container $CT_ID created and started successfully."
-    echo "Enabling root login via SSH..."
+# @param {string} ctId - The ID of the container to check
+# @returns {boolean} true if the container is running, false otherwise
+#
+setTempSsh() {
+    log_info "Waiting 10 seconds for the container to start..."
+    sleep 10
 
-    # Modify SSH config to allow root login and restart SSH service
-    pct exec "$CT_ID" -- sed -i 's/^#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-    pct exec "$CT_ID" -- systemctl restart ssh
+    # Check if the container is running
+    local containerStatus
+    containerStatus=$(pct status "$ctId")
 
-    echo "Root login via SSH has been enabled."
+    # If the container is running, enable root login via SSH
+    if [[ $containerStatus =~ 'running' ]]; then
+        log_success "Container $ctId is running."
+        log_info "Enabling root login via SSH..."
 
-    # Download the install script into the container and make it executable
-    echo "Downloading and setting up installation script..."
-    pct exec "$CT_ID" -- mkdir -p /opt/scripts/install
-    pct exec "$CT_ID" -- wget -O /opt/scripts/install/ct_debian_minimal_install.sh https://raw.githubusercontent.com/stony64/debian_minimal_install/main/ct_debian_minimal_install.sh
-    pct exec "$CT_ID" -- chmod +x /opt/scripts/install/ct_debian_minimal_install.sh
+        # Modify SSH config to allow root login and restart SSH service
+        if pct exec "$ctId" -- sed -i 's/^#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+           pct exec "$ctId" -- systemctl restart ssh; then
+            log_success "Root login via SSH has been enabled."
+        else
+            log_error "Failed to enable root login via SSH."
+            exit 1
+        fi
+    else
+        log_error "Container $ctId was not started successfully."
+        exit 1
+    fi
+}
 
-    echo "Installation script downloaded and made executable."
-else
-    echo "Error: Container $CT_ID was not started successfully."
-    exit 1
-fi
+# Downloads the installation script from the GitHub repository and sets it up in
+# the container.
+#
+downloadCTInstallScript() {
+    # Download the script from the GitHub repository
+    log_info "Downloading and setting up installation script..."
+    if pct exec "$ctId" -- mkdir -p /opt/scripts/install && \
+       pct exec "$ctId" -- wget -O /opt/scripts/install/ct_debian_minimal_install.sh https://raw.githubusercontent.com/stony64/debian_minimal_install/main/ct_debian_minimal_install.sh; then
+        # Make the script executable
+        if pct exec "$ctId" -- chmod +x /opt/scripts/install/ct_debian_minimal_install.sh; then
+            log_success "Installation script downloaded and made executable."
+        else
+            log_error "Failed to set permissions for the installation script."
+            exit 1
+        fi
+    else
+        log_error "Failed to download the installation script."
+        exit 1
+    fi
+}
+
+# Main script logic
+# This function is the main entry point for the script. It calls other functions to
+# perform the necessary steps to set up the LXC container.
+# 1. Rotate log files to prevent them from growing too large.
+# 2. Collect user inputs for the LXC container setup.
+# 3. Create the LXC container with the specified parameters.
+# 4. Set up temporary SSH access to the container.
+# 5. Download the installation script from the GitHub repository and set it up in
+#    the container.
+#
+main() {
+    rotate_logs
+    collect_user_inputs
+    create_lxc_container
+    setTempSsh
+    downloadCTInstallScript
+}
+
+# Runs the main function of the script
+#
+# This will execute the main function and its called functions
+# in the correct order.
+#
+main
