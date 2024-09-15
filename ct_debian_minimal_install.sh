@@ -28,12 +28,21 @@ fi
 # These are constant values used throughout the script. They are
 # readonly, meaning they cannot be changed after they are set.
 #
-readonly SCRIPT_NAME="$(basename "$0")"                             # Name of the script
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" # Directory where the script is located
-readonly SCRIPT_VERSION="0.6.0"                                     # Version of the script
-readonly LOG_FILE="/var/log/${SCRIPT_NAME}.log"                     # Log file for the script
+readonly SCRIPT_NAME="$(basename "$0")"                                         # Name of the script
+readonly SCRIPT_VERSION="0.8.5"                                                 # Version of the script
+readonly LOG_FILE="/var/log/${SCRIPT_NAME}.log"                                 # Log file for the script
 readonly DOTFILES_URL="https://raw.githubusercontent.com/stony64/dotfiles/main" # URL of the dotfiles repository
-readonly HOSTFILES=(.bashrc .bash_aliases .bash_functions .nanorc)  # List of host files to copy from the dotfiles repository
+readonly HOSTFILES=(.bashrc .bash_aliases .bash_functions .nanorc)              # List of host files to copy from the dotfiles repository
+
+# User inputs
+# ------------------------------------------------------------------
+# These variables are used to store user inputs provided by
+# the user during the script execution. They are declared here
+# so that they can be accessed in any function.
+#
+newUsername=""  # The username to create for the new user
+shPort=""       # The port number for SSH access
+confirmation="" # Confirmation variable
 
 # Set colors for output
 # ----------------------
@@ -46,25 +55,19 @@ readonly YELLOW='\e[0;33m'  # Yellow color
 readonly CYAN='\e[0;36m'    # Cyan color
 readonly NC='\e[0m'         # No Color (reset)
 
-# Initialize variables for user inputs
-# ------------------------------------------------------------------
-# These variables will be set by the user via prompts. They are
-# declared here so that they can be accessed in any function.
+# Process command-line options
 #
-declare newUsername                 # The username to create for the new user
-declare shPort                      # The port number for SSH access
-declare newLocales="de_DE.UTF-8"    # The locales to set for the system
-
-# Command-line options for help and version
+# The script accepts the following options:
+#   -h: Print help message and exit
+#   -v: Print version number and exit
 #
-# Check if any command-line options were provided
+# All other options are invalid and will cause the script to exit with an error
+# message.
 #
 if [[ -n "${1:-}" ]]; then
     case "$1" in
         -h)
             echo "Usage: $SCRIPT_NAME [-h] [-v]"
-            echo "  -h  Display this help message"
-            echo "  -v  Display script version"
             exit 0
             ;;
         -v)
@@ -132,7 +135,6 @@ log_message() {
     printf '%b[%s] %s: %s%b\n' "$logColor" "$logTimestamp" "$logLevel" "$logMessage" "$NC" | tee -a "$LOG_FILE"
 }
 
-# Convenience functions for logging messages at different levels
 log_info()      { log_message "INFO" "$CYAN" "$1"; }
 log_error()     { log_message "ERROR" "$RED" "$1"; }
 log_success()   { log_message "SUCCESS" "$GREEN" "$1"; }
@@ -168,7 +170,8 @@ prompt_input() {
         fi
     done
 }
-# Confirms user inputs before proceeding
+
+# Confirms user inputs before proceeding with the script
 #
 # This function loops until the user confirms the inputs or decides to re-enter
 # the inputs.
@@ -176,97 +179,74 @@ prompt_input() {
 confirm_inputs() {
     while true; do
         log_info "Summary of inputs:"
-        log_info "Container-Hostname: $ctHostname"
-        log_info "RootPassword: $rootPassword"
-        log_info "Last Octet: $lastOctet"
+        log_info "Username: $newUsername"
+        log_info "SSH Port: $shPort"
 
-        read -r -p "Are these details correct? (y/n): " choice
-        case "$choice" in
-            y | Y) break ;;
-            n | N) collect_user_inputs ;;
-            *) log_warning "Invalid choice. Please enter 'y' or 'n'." ;;
-        esac
+        prompt_input "Are these details correct? (y/n): " "confirmation" '^[yYnN]$'
+        if [[ $confirmation =~ ^[yY]$ ]]; then
+            break
+        elif [[ $confirmation =~ ^[nN]$ ]]; then
+            collect_user_inputs
+        else
+            log_warning "Invalid choice. Please enter 'y' or 'n'."
+        fi
     done
 }
 
-# Collects user inputs for the container creation
+# Collects necessary inputs from the user
 #
-# This function prompts the user for necessary inputs such as the hostname,
-# root password, and last octet of the IP address. It also validates the
-# inputs and sets the full IPv4 and IPv6 addresses using the last octet
-# provided.
-#
-# The inputs are validated as follows:
-# - Hostname: Alphanumeric characters and hyphens are allowed.
-# - Root password: Minimum 8 characters are required.
-# - Last octet of the IPv4 address: Must be between 1 and 254.
+# This function is responsible for asking the user for necessary inputs and
+# setting the global variables with the collected values.
 #
 collect_user_inputs() {
-    local lastOctet
-    prompt_input "Enter the new hostname for the container (alphanumeric and hyphens allowed): " "ctHostname" '^[a-zA-Z0-9-]+$'
-    prompt_input "Enter root-password for the container (min. 8 characters): " "rootPassword" '.{8,}'
+    # Prompt the user for the new username
+    #
+    # The username should be alphanumeric and must be at least one character long.
+    prompt_input "Enter the new Username (alphanumeric): " "newUsername" '^[a-zA-Z0-9]+$'
 
-    # Validate IPv4 last octet input (must be between 1 and 254)
-    prompt_input "Enter the last octet of the IPv4 address (e.g., x for 192.168.10.x): " "lastOctet" '^[1-9][0-9]?$|^1[0-9]{2}$|^2[0-4][0-9]$|^25[0-4]$'
+    # Prompt the user for the new SSH port
+    #
+    # The port should be a number between 1 and 65535.
+    prompt_input "Enter the new SSH port (1-65535): " "shPort" '^[1-9][0-9]{0,4}$'
 
+    # Confirm the inputs
+    #
+    # Loop until the user confirms the inputs or decides to re-enter the inputs.
     confirm_inputs
-
-    # Set full IPv4 and IPv6 addresses using the last octet provided
-    ipv4="${baseCtIpv4}${lastOctet}"
-    ipv6="${baseCtIpv6}${lastOctet}"
-
-    log_info "IPv4 Address set to: $ipv4"
-    log_info "IPv6 Address set to: $ipv6"
 }
 
-# Set APT source list for the system
+# Sets the APT source list for the system.
 #
-# This function will set the APT source list for the system by
-# backing up the current list and creating a new one with the
-# specified contents.
+# Backs up the original source list file and then overwrites the file with the
+# contents of the file.
 #
 setAptSource() {
     local aptSourceListFile="/etc/apt/sources.list"
     local aptSourceListBackupFile="/etc/apt/sources.list.bak"
     log_info "Backing up and setting APT source list..."
 
-    # Backup the current APT source list
-    cp "$aptSourceListFile" "$aptSourceListBackupFile" && log_success "Backup of $aptSourceListFile created successfully." || log_warning "Failed to create backup for $aptSourceListFile."
-
-    # Create a new APT source list with the specified contents
+    cp "$aptSourceListFile" "$aptSourceListBackupFile" && log_success "Backup created." || log_warning "Backup failed."
+    
     cat <<EOL >"$aptSourceListFile"
-# Debian bookworm main repository
-deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
-
-# Debian bookworm-updates repository
-deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
-
-# Debian security repository
-deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
-
+deb http://deb.debian.org/debian bookworm main contrib non-free
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free
+deb http://security.debian.org/debian-security bookworm-security main contrib non-free
 # Backports are _not_ enabled by default.
 # Enable them by uncommenting the following line:
-# deb http://deb.debian.org/debian bookworm-backports main non-free-firmware
+# deb https://deb.debian.org/debian bookworm-backports main non-free-firmware
 EOL
 }
 
-# Update system packages
+# Update the system packages
 #
-# This function will update the system packages using apt.
-#
-# The apt update command will update the package list, apt upgrade will
-# upgrade all packages that can be upgraded without changing the install
-# status of any package, and apt full-upgrade will perform the same as
-# apt upgrade but will also intelligently handle the upgrade of the most
-# important packages at the expense of potential changes on the system.
+# This function updates the system using the APT package manager.
 #
 updateSystem() {
     log_info "Updating system..."
     if apt update -y && apt upgrade -y && apt full-upgrade -y; then
-        sync
-        log_success "System update completed successfully."
+        log_success "System update completed."
     else
-        log_error "Failed to update system."
+        log_error "System update failed."
         return 1
     fi
 }
@@ -274,206 +254,373 @@ updateSystem() {
 # Installs required packages
 #
 # Installs the following packages:
-# - mc: a text-based file manager
-# - console-setup: for setting up the console font and keymap
-# - keyboard-configuration: for setting up the keyboard layout
-# - locales: for setting up the system locales
-# - sudo: for allowing regular users to run commands as root
-# - curl: for downloading files over HTTP
+#   - mc: Midnight Commander (a file manager)
+#   - console-setup: Console font and keymap setup
+#   - keyboard-configuration: Keyboard configuration
+#   - locales: System locales
+#   - sudo: Superuser privileges management utility
+#   - curl: Command-line tool for transferring data
 #
 installRequiredPackages() {
     log_info "Installing required packages..."
     if apt install -y mc console-setup keyboard-configuration locales sudo curl; then
-        log_success "Required packages installed."
+        log_success "Packages installed."
     else
-        log_error "Failed to install required packages."
+        log_error "Package installation failed."
         return 1
     fi
 }
 
-# Set the system locales
+# Sets locales for the system
+#
+# This function sets the locales for the system, which control things like the
+# character set, date format, and currency symbol.
+#
+# The locales are set to German, British English, and American English.
 #
 setupLocales() {
     local locales=("de_DE.UTF-8 UTF-8" "en_GB.UTF-8 UTF-8" "en_US.UTF-8 UTF-8")
 
     log_info "Setting locales to German..."
-    # Add the required locales to /etc/locale.gen if they are not already present
     for locale in "${locales[@]}"; do
-        grep -q "^${locale%% *}" /etc/locale.gen || echo "$locale" >>/etc/locale.gen
+        grep -q "^${locale%% *}" /etc/locale.gen || echo "$locale" >> /etc/locale.gen
     done
 
-    # Generate the locales
     locale-gen
-
-    # Update the LANG environment variable for the system
     update-locale LANG="$newLocales"
-
     log_success "Locales set successfully!"
 }
 
-# Set up console and keyboard configurations
+# Sets the console and keyboard configurations
 #
-# This function sets the console character map to UTF-8 and the keyboard layout to
-# German. It also sets the font face to Fixed and the font size to 8x18.
+# This function sets the console and keyboard configurations based on user input.
+# The console font and keymap are set to UTF-8 and Latin1 and Latin5 - western Europe
+# and Turkic languages, respectively. The console font size is set to 8x18.
+# The keyboard configuration is set to German.
 #
 setupConsoleAndKeyboard() {
     log_info "Setting console and keyboard configuration..."
 
-    # Set console character map
-    debconf-set-selections <<<"console-setup console-setup/charmap select UTF-8" &&
-    # Set console codeset to Latin1 and Latin5 (western Europe and Turkic languages)
-    debconf-set-selections <<<"console-setup console-setup/codeset select Latin1 and Latin5 - western Europe and Turkic languages" &&
-    # Set console font face to Fixed
-    debconf-set-selections <<<"console-setup console-setup/fontface select Fixed" &&
-    # Set console font size to 8x18
-    debconf-set-selections <<<"console-setup console-setup/fontsize select 8x18"
+    # Set console font and keymap
+    debconf-set-selections <<< "console-setup console-setup/charmap select UTF-8"
+    debconf-set-selections <<< "console-setup console-setup/codeset select Latin1 and Latin5 - western Europe and Turkic languages"
+    debconf-set-selections <<< "console-setup console-setup/fontface select Fixed"
+    debconf-set-selections <<< "console-setup console-setup/fontsize select 8x18"
 
-    # Set keyboard layout to German
-    debconf-set-selections <<<"keyboard-configuration keyboard-configuration/layout select German" &&
-    # Set keyboard variant to none
-    debconf-set-selections <<<"keyboard-configuration keyboard-configuration/variant select " &&
-    
-    # Apply changes for console and keyboard settings
-    dpkg-reconfigure -f noninteractive console-setup &&
-    dpkg-reconfigure -f noninteractive keyboard-configuration &&
-    
-    log_success "Console and keyboard configuration set successfully." || log_error "Failed to set console or keyboard configuration."
+    # Set keyboard configuration
+    debconf-set-selections <<< "keyboard-configuration keyboard-configuration/layout select German"
+
+    # Reconfigure the console and keyboard
+    dpkg-reconfigure -f noninteractive console-setup
+    dpkg-reconfigure -f noninteractive keyboard-configuration
+
+    log_success "Console and keyboard configuration set."
 }
 
-# Configures the SSH service with advanced options
+# Set up the SSH service and configure it with advanced settings
 #
-# This function configures the SSH service to listen on the specified port,
-# disables password authentication, and enables public key authentication.
+# This function will configure the SSH service to listen on a port specified
+# by the user, and apply advanced settings to the SSH configuration file.
+#
+# Parameters:
+#   - shPort: the port number to set for the SSH service
 #
 setupSsh() {
     log_info "Configuring SSH service..."
+
+    # Back up the SSH configuration file
     local sshConfigFile="/etc/ssh/sshd_config"
-    local sshConfigBackupFile="/etc/ssh/sshd_config.bak"
-    systemctl stop ssh.service
-    cp "$sshConfigFile" "$sshConfigBackupFile" && log_success "Backup of $sshConfigFile created successfully." || log_warning "Failed to create backup for $sshConfigFile."
-    sed -i 's/^#Port 22/Port '"$shPort"'/g' "$sshConfigFile" || log_error "Failed to set SSH port in $sshConfigFile"
-    log_success "SSH service configured successfully on port $shPort."
+    cp "$sshConfigFile" "${sshConfigFile}.bak" && log_success "SSH config backed up."
+
+    # Set the port number for the SSH service
+    sed -i 's/^#Port 22/Port '"$shPort"'/g' "$sshConfigFile"
+    log_success "SSH service configured on port $shPort."
 }
 
-# Creates an advanced SSH configuration file with the specified username and
-# SSH port
+# Create advanced SSH configuration file with restrictive settings
 #
-# The file is created in the /etc/ssh/sshd_config.d directory and is named
-# after the username.
+# This function will create an advanced SSH configuration file in the
+# /etc/ssh/sshd_config.d directory. The file will have restrictive settings
+# such as disabling password authentication, root login, etc. The function
+# will also restart the SSH service to apply the new configuration.
 #
-# The configuration file sets the specified SSH port, disables password
-# authentication, and enables public key authentication. It also sets the
-# maximum number of authentication attempts, sets the interval between client
-# alive messages, and sets the log level to AUTH. Additionally, it allows only
-# the specified user and group to connect.
-#
+# Returns 1 if the SSH service fails to start, 0 otherwise.
 create_advanced_ssh_config() {
+    local SSH_CONFIG_DIR="/etc/ssh/sshd_config.d"
+    local SSH_CONFIG_FILE="$SSH_CONFIG_DIR/$newHostname.conf"
+
     log_info "Creating advanced SSH configuration file..."
 
-    # Define the directory and file path for the SSH configuration
-    local SSH_CONFIG_DIR="/etc/ssh/sshd_config.d"
-    local SSH_CONFIG_FILE="$SSH_CONFIG_DIR/$newUsername.conf"
+    # Check if the directory exists; if not, create it
+    if [ ! -d "$SSH_CONFIG_DIR" ]; then
+        mkdir -p "$SSH_CONFIG_DIR" || {
+            log_error "Failed to create directory $SSH_CONFIG_DIR."
+            return 1
+        }
+    fi
 
-    # Create the SSH configuration directory if it doesn't exist
-    mkdir -p "$SSH_CONFIG_DIR" || log_error "Failed to create directory $SSH_CONFIG_DIR."
-
-    # Create the SSH configuration file
+    # Create the SSH configuration file with advanced settings
+    log_info "Creating SSH configuration file with advanced settings..."
     cat <<EOL >"$SSH_CONFIG_FILE"
-Port $SSH_PORT                          # Use the specified SSH port
-Protocol 2                              # Use SSH protocol 2
-PermitRootLogin no                      # Disable root login
-PasswordAuthentication no               # Disable password authentication
-ChallengeResponseAuthentication no      # Disable challenge-response authentication
-KbdInteractiveAuthentication no         # Disable keyboard-interactive authentication
-GSSAPIAuthentication no                 # Disable GSSAPI authentication
-PubkeyAuthentication yes                # Enable public-key authentication
-AuthorizedKeysFile .ssh/authorized_keys # Use the specified authorized keys file
-UsePAM yes                              # Disable PAM authentication
-MaxAuthTries 3                          # Set the maximum number of authentication attempts
-ClientAliveInterval 600                 # Set the interval between client alive messages
-ClientAliveCountMax 2                   # Set the number of allowed client alive messages
-LogLevel AUTH                           # Set the log level to AUTH
-AllowUsers root, $NEW_USERNAME          # Allow the specified user to connect
-AllowGroups sshusers                    # Allow the specified group to connect
-AllowTcpForwarding no                   # Disable TCP forwarding
-X11Forwarding no                        # Disable X11 forwarding
-PermitTunnel no                         # Disable tunneling
-AllowAgentForwarding no                 # Disable agent forwarding
-AllowStreamLocalForwarding no           # Disable stream local forwarding
-Ciphers aes256-gcm@openssh.com,chacha20-poly1305@openssh.com,aes256-ctr         # Set the ciphers to use
-MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com                # Set the MACs to use
-KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256 # Set the key exchange algorithms to use
-HostbasedAuthentication no              # Disable host-based authentication
-RhostsRSAAuthentication no              # Disable RhostsRSA authentication
-Match User root                         # Disable TCP forwarding and X11 forwarding for the root user. 
+# SSH configuration file with advanced settings
+#
+# This file is automatically generated by the ct_debian_minimal_install.sh script
+#
+Port $SSH_PORT                                                                      # Port number to listen on
+Protocol 2                                                                          # Only allow SSH protocol version 2
+PermitRootLogin no                                                                  # Disable root login 
+PasswordAuthentication no                                                           # Disable password authentication
+ChallengeResponseAuthentication no                                                  # Disable challenge-response authentication
+KbdInteractiveAuthentication no                                                     # Disable keyboard-interactive authentication
+GSSAPIAuthentication no                                                             # Disable GSSAPI authentication
+PubkeyAuthentication yes                                                            # Enable public key authentication
+AuthorizedKeysFile .ssh/authorized_keys                                             # Set the location of the authorized keys file
+UsePAM yes                                                                          # Enable PAM
+MaxAuthTries 3                                                                      # Set the maximum number of authentication attempts
+ClientAliveInterval 600                                                             # Set the client alive interval
+ClientAliveCountMax 2                                                               # Set the maximum number of client alive messages
+LogLevel AUTH                                                                       # Set the log level
+AllowUsers $NEW_USERNAME                                                            # Set the allowed users
+AllowGroups sshusers                                                                # Set the allowed groups
+AllowTcpForwarding no                                                               # Disable TCP forwarding
+X11Forwarding no                                                                    # Disable X11 forwarding
+PermitTunnel no                                                                     # Disable tunneling
+AllowAgentForwarding no                                                             # Disable agent forwarding
+AllowStreamLocalForwarding no                                                       # Disable stream local forwarding
+Ciphers aes256-gcm@openssh.com,chacha20-poly1305@openssh.com,aes256-ctr             # Set the ciphers
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com                    # Set the MACs
+KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256     # Set the key exchange algorithms
+HostbasedAuthentication no                                                          # Disable host-based authentication
+RhostsRSAAuthentication no                                                          # Disable RhostsRSA authentication
+Match User root                                                                     # Disable root login for the root user
     AllowTcpForwarding no
     X11Forwarding no
 EOL
 
-    # Set the appropriate permissions for the SSH configuration file
+    # Set appropriate permissions for the SSH configuration file
+    log_info "Setting appropriate permissions for the SSH configuration file..."
     chown root:root "$SSH_CONFIG_FILE"
     chmod 644 "$SSH_CONFIG_FILE"
 
-    # Reload the SSH service and start it
-    systemctl start ssh.service && systemctl reload ssh.service && log_success "SSH configuration updated and SSH service started." || log_error "Failed to start SSH service."
+    # Restart the SSH service to apply new configuration
+    log_info "Restarting the SSH service to apply new configuration..."
+    if systemctl start sshd.service; then
+        systemctl reload sshd.service
+        log_success "SSH configuration updated successfully and SSH service started."
+    else
+        log_error "Failed to start SSH service. Please check SSH configuration manually."
+        return 1
+    fi
 }
-
 <<<<<<<<<<<<<<  ✨ Codeium Command 🌟  >>>>>>>>>>>>>>>>
-# Creates a new user with sudo privileges.
-# This function creates a new user and grants them sudo privileges.
-# Parameters:
-#   $newUsername: The username for the new user.
+
+# Creates a new user account with sudo privileges and sets up the SSH
+# directory and authorized keys.
 #
+function setupNewUser(
+    username: string,
+    publicKey: string,
+    dotfilesUrl: string,
+): void {
+    log_info(`Creating new user account: ${username}`)
 setupNewUser() {
     log_info "Creating new user account: $newUsername"
-    useradd -m -s /bin/bash "$newUsername" && passwd "$newUsername"
-    usermod -aG sudo "$newUsername"
-    echo "$newUsername ALL=(ALL:ALL) ALL" > "/etc/sudoers.d/$newUsername"
-    log_success "User $newUsername created and granted sudo privileges."
+    
+    local -r username="$newUsername"
+    local -r homeDir="/home/$username"
+    local -r sshDir="$homeDir/.ssh"
+
+    const homeDir = `/home/${username}`
+    const sshDir = `${homeDir}/.ssh`
+
+    // Check if the user already exists
+    if (id(username) !== null) {
+        log_warning(`User ${username} already exists.`)
+
+        // Prompt to delete and recreate the existing user
+        const choice = prompt_input(
+            `Do you want to delete and recreate the user? (y/n): `,
+            'choice',
+            '^[yYnN]$'
+        )
+
+        switch (choice) {
+            case 'y':
+            case 'Y':
+                // Check sudoers file for syntax errors
+                if (visudo('-c', '/etc/sudoers') !== 0) {
+                    log_error('Syntax check of the sudoers file failed.')
+                    return
+    # Check if the user already exists
+    if id "$username" &>/dev/null; then
+        log_warning "User $username already exists."
+        
+        # Prompt to delete and recreate the existing user
+        prompt_input "Do you want to delete and recreate the user? (y/n): " "choice" '^[yYnN]$'
+        case "$choice" in
+            y | Y)
+                # Check sudoers file for syntax errors
+                visudo -c /etc/sudoers || {
+                    log_error "Syntax check of the sudoers file failed."
+                    return 1
+                }
+
+                // Remove sudo privileges and delete user
+                sed('-i', `/^${username}/d`, '/etc/sudoers')
+                rm('-f', `/etc/sudoers.d/${username}`)
+                userdel('-r', username)
+                log_success(`User '${username}' deleted.`)
+                break
+            case 'n':
+            case 'N':
+                log_warning('User was not recreated.')
+                # Remove sudo privileges and delete user
+                sed -i "/^$username/d" /etc/sudoers
+                rm -f "/etc/sudoers.d/$username"
+                userdel -r "$username"
+                log_success "User '$username' deleted."
+                ;;
+            *)
+                log_warning "User was not recreated."
+                return
+            default:
+                log_error('Invalid input. Please enter y or n.')
+                return
+        }
+                ;;
+        esac
+    fi
+
+    # Create new user
+    useradd -m -s /bin/bash "$username"
+    passwd "$username"
+    
+    # SSH directory setup
+    mkdir -p "$sshDir"
+    chown -R "$username:$username" "$sshDir"
+    chmod 700 "$sshDir"
+    
+    # Sudo privileges
+    usermod -aG sudo "$username"
+    echo "$username ALL=(ALL:ALL) ALL" | tee "/etc/sudoers.d/$username" >/dev/null
+    visudo -c /etc/sudoers.d/"$username" || {
+        log_error "Syntax check failed for sudoers file for $username"
+        return 1
+    }
+
+    // Create new user
+    useradd('-m', '-s', '/bin/bash', username)
+    passwd(username)
+    # Prompt for SSH key
+    prompt_input "Enter the contents of your public key file (.pub): " "publicKey" '^(ssh-(rsa|ed25519|ecdsa)-[A-Za-z0-9+\/]+)$'
+    echo "$publicKey" | tee "$sshDir/authorized_keys" >/dev/null
+    chmod 600 "$sshDir/authorized_keys"
+
+    // SSH directory setup
+    mkdir('-p', sshDir)
+    chown('-R', `${username}:${username}`, sshDir)
+    chmod(700, sshDir)
+    # Download dotfiles
+    for file in "${HOSTFILES[@]}"; do
+        curl -o "$homeDir/$file" "$DOTFILES_URL/$file"
+        chown "$username:$username" "$homeDir/$file"
+    done
+
+    // Sudo privileges
+    usermod('-aG', 'sudo', username)
+    echo(`${username} ALL=(ALL:ALL) ALL`) | tee(`/etc/sudoers.d/${username}`) > /dev/null
+    if (visudo('-c', `/etc/sudoers.d/${username}`) !== 0) {
+        log_error(`Syntax check failed for sudoers file for ${username}`)
+        return
+    }
+    for file in "${HOSTFILES[@]}"; do
+        curl -o "/root/$file" "$DOTFILES_URL/$file"
+        chown "root:root" "/root/$file"
+    done
+
+    // SSH key
+    echo(publicKey) | tee(`${sshDir}/authorized_keys`) > /dev/null
+    chmod(600, `${sshDir}/authorized_keys`)
+
+    // Download dotfiles
+    for (const file of HOSTFILES) {
+        curl('-o', `${homeDir}/${file}`, `${dotfilesUrl}/${file}`)
+        chown(`${username}:${username}`, `${homeDir}/${file}`)
+    }
+
+    for (const file of HOSTFILES) {
+        curl('-o', `/root/${file}`, `${dotfilesUrl}/${file}`)
+        chown('root:root', `/root/${file}`)
+    }
+
+    log_success(`User ${username} created successfully with sudo privileges. Dotfiles downloaded.`)
+    log_success "User $username created successfully with sudo privileges. Dotfiles downloaded."
 }
 
-# Clean up the system and reset variables
-# This function cleans up the system by removing unneeded packages and
-# resetting the variables that were used in the script.
+<<<<<<<  c93d6548-a55c-48d4-9f45-ea706cfe5b33  >>>>>>>
+# Function to clean up variables and system
+# ------------------------------------------------
+# This function resets the script variables and cleans up the system.
 #
 clean_system() {
-    log_info "Cleaning up system..."
-    apt autoremove -y && apt autoclean && apt clean && sync
-    unset newUsername shPort newLocales
+    log_info "Resetting variables and cleaning up system..."
+
+    # Reset variables
+    unset newUsername
+    unset sshPort
+    unset confirmation
+
+    # Clean up system
+    apt autoremove -y
+    apt autoclean
+    apt clean
+    sync
+
     log_success "System cleaned up."
+    return 0
 }
 
-# Reboot the system if the user chooses to
-#
-# This function prompts the user to decide if they want to reboot the system
-# after the script has finished running. If the user chooses to reboot, the
-# system will be rebooted. If the user chooses not to reboot, the script will
-# exit.
+# Function to prompt for system reboot
+# ------------------------------------------------
+# This function will prompt the user whether to reboot the system after the script
+# has finished running. If the user responds with 'y', the system will be
+# immediately rebooted. Otherwise, the user will be reminded to reboot the system
+# later.
 #
 reboot_system() {
-    while true; do
-        read -p "Do you want to reboot the system now? (y/n): " choice
-        case "$choice" in
-            y | Y) log_info "Rebooting system..." && reboot ;;
-            n | N) log_info "Please remember to reboot the system later." && break ;;
-            *) log_warning "Please respond with yes (y) or no (n)." ;;
-        esac
-    done
+    # Prompt for user input
+    prompt_input "Do you want to reboot the system now? (y/n): " "choice" '^[yYnN]$'
+
+    # Handle the user's response
+    case "$choice" in
+        y | Y)
+            log_info "Rebooting system..."
+            reboot
+            ;;
+        n | N)
+            log_info "Please remember to reboot the system later."
+            ;;
+        *)
+            log_warning "Invalid choice. Please respond with 'y' or 'n'."
+            ;;
+    esac
 }
 
-# Main function to orchestrate the script flow
+# Main function to orchestrate script flow
+# -----------------------------------------
+# This function is the main entry point for the script. It calls other functions
+# to perform the necessary steps to set up the LXC container.
 #
-# This function will call the functions to
-# - Collect user inputs
-# - Set up the APT source
-# - Update the system
-# - Install required packages
-# - Set up the console and keyboard settings
-# - Set up SSH
-# - Create an advanced SSH configuration file
-# - Set up a new user
-# - Clean up the system
-# - Reboot the system
+# 1. Collect user inputs for the container creation
+# 2. Set up the APT sources for the container
+# 3. Update the system
+# 4. Install required packages
+# 5. Set up the console and keyboard
+# 6. Set up SSH
+# 7. Create advanced SSH configuration file
+# 8. Set up the new user
+# 9. Clean up the system
+# 10. Reboot the system
 #
 main() {
     collect_user_inputs
@@ -481,17 +628,14 @@ main() {
     updateSystem
     installRequiredPackages
     setupConsoleAndKeyboard
+    collect_user_inputs
     setupSsh
     create_advanced_ssh_config
     setupNewUser
+    log_info "Script execution completed."
     clean_system
-    log_info "Installation complete."
     reboot_system
 }
 
-# Runs the main function of the script
-#
-# This will execute the main function and its called functions
-# in the correct order.
-#
+# Run the script
 main

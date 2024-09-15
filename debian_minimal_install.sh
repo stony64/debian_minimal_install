@@ -2,46 +2,75 @@
 
 ####################################################
 # Debian Install Script by Stony64
-# Version: 0.3.0
+# Version: 0.6.0
 # Initial Release: July 2024
 ####################################################
 
 # Exit on errors, unset variables, and pipeline failures
+# ------------------------------------------------------------------
+# This causes the script to terminate if any command in the pipeline
+# fails. Additionally, it will log an error and exit with a status code
+# of 1 if any command raises an error.
+#
 set -euo pipefail
 trap 'log_error "Script terminated unexpectedly."; exit 1;' ERR
 
-# Clear the screen
+# Clear the screen to make the output more readable
 clear
 
-# Check if the script is run with root privileges
+# Ensure script is run as root
 if [[ $EUID -ne 0 ]]; then
     log_error "This script must be run as root."
     exit 1
 fi
 
 # Constants
-readonly SCRIPT_NAME="$(basename "$0")"
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly SCRIPT_VERSION="0.1.0"
-readonly LOG_FILE="/var/log/${SCRIPT_NAME}.log"
-readonly DOTFILES_URL="https://raw.githubusercontent.com/stony64/dotfiles/main"
-readonly HOSTFILES=(.bashrc .bash_aliases .bash_functions .nanorc)
-#readonly BACKUP_DIR_NANO="/root/.nano/backups"
+# ------------------------------------------------------------------
+# These are constant values used throughout the script. They are
+# readonly, meaning they cannot be changed after they are set.
+#
+readonly SCRIPT_NAME="$(basename "$0")"                             # Name of the script
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" # Directory where the script is located
+readonly SCRIPT_VERSION="0.6.0"                                     # Version of the script
+readonly LOG_FILE="/var/log/${SCRIPT_NAME}.log"                     # Log file for the script
+readonly DOTFILES_URL="https://raw.githubusercontent.com/stony64/dotfiles/main" # URL of the dotfiles repository
+readonly HOSTFILES=(.bashrc .bash_aliases .bash_functions .nanorc)  # List of host files to copy from the dotfiles repository
 
 # Set colors for output
-readonly RED='\e[0;31m'
-readonly GREEN='\e[0;32m'
-readonly YELLOW='\e[0;33m'
-readonly CYAN='\e[0;36m'
-readonly NC='\e[0m' # No Color
+# ----------------------
+#
+# These are used for logging output
+#
+readonly RED='\e[0;31m'     # Red color
+readonly GREEN='\e[0;32m'   # Green color
+readonly YELLOW='\e[0;33m'  # Yellow color
+readonly CYAN='\e[0;36m'    # Cyan color
+readonly NC='\e[0m'         # No Color (reset)
 
 # Initialize user inputs
-declare newUsername newHostname ipv4 ipv6 sshPort
-declare netmaskIpv4="255.255.255.0" gatewayIpv4="192.168.10.1"
-declare gatewayIpv6="fd00:1234:abcd:10:3ea6:2fff:fe65:8fa7"
-declare newLocales="de_DE.UTF-8"
+# ------------------------------------------------------------------
+# These variables will be set by the user via prompts. They are declared
+# here so that they can be accessed in any function.
+#
+declare newUsername  # The username to create for the new user
+declare newHostname  # The hostname for the system
+declare ipv4         # The full IPv4 address
+declare ipv6         # The full IPv6 address
+declare sshPort      # The port number for SSH access
 
+# Default values for network configuration
+declare netmaskIpv4="255.255.255.0"  # Default IPv4 netmask
+declare gatewayIpv4="192.168.10.1"   # Default IPv4 gateway
+declare gatewayIpv6="fd00:1234:abcd:10:3ea6:2fff:fe65:8fa7"  # Default IPv6 gateway
+
+# Default value for system locales
+declare newLocales="de_DE.UTF-8"  # Default locales for the system
+
+
+# Command-line options for help and version
+#
 # Check if any command-line options were provided
+#
 if [[ -n "${1:-}" ]]; then
     case "$1" in
         -h)
@@ -63,35 +92,91 @@ if [[ -n "${1:-}" ]]; then
     esac
 fi
 
+# Function to rotate log files if they exceed a certain size
+#
+# This function will rotate the log file if it exceeds the specified size
+# by renaming the old log file to a numbered backup, and then creating a
+# new empty log file.
+#
+# Parameters:
+#   - max_size: maximum log file size in bytes (default: 100KB)
+#   - backup_count: number of backup log files to keep (default: 3)
+#
+rotate_logs() {
+    local log_file="$LOG_FILE"
+    local max_size=102400  # Maximum log file size in bytes (e.g., 100KB)
+    local backup_count=3   # Number of backup log files to keep
+
+    # Check if the log file exists and is larger than the maximum size
+    if [[ -f "$log_file" && $(stat -c%s "$log_file") -ge $max_size ]]; then
+        log_info "Log file exceeds max size of $((max_size / 1024))KB. Rotating logs..."
+
+        # Rotate logs by renaming old logs and removing the oldest backup if necessary
+        for ((i=backup_count - 1; i>=1; i--)); do
+            if [[ -f "$log_file.$i" ]]; then
+                mv "$log_file.$i" "$log_file.$((i + 1))"
+            fi
+        done
+        
+        # Rename the current log to the first backup
+        mv "$log_file" "$log_file.1"
+
+        # Create a new empty log file
+        : > "$log_file"
+        log_info "Log rotation complete."
+    fi
+}
+
+# Logs a message with a color and timestamp
+#
+# Parameters:
+#   logLevel: a string with the log level (e.g., "INFO", "ERROR", etc.)
+#   logColor: a string with the color code for the log level (e.g., "$CYAN", "$RED", etc.)
+#   logMessage: the message to log
+#
 log_message() {
-    # Logs messages with color and to the log file
     local logLevel="$1"
     local logColor="$2"
     local logMessage="$3"
     local logTimestamp
     logTimestamp="$(date '+%Y-%m-%d %H:%M:%S')"
 
-    # Use %b to ensure color codes are interpreted
     printf '%b[%s] %s: %s%b\n' "$logColor" "$logTimestamp" "$logLevel" "$logMessage" "$NC" | tee -a "$LOG_FILE"
 }
 
-log_info() { log_message "INFO" "$CYAN" "$1"; }
-log_error() { log_message "ERROR" "$RED" "$1"; }
-log_success() { log_message "SUCCESS" "$GREEN" "$1"; }
-log_warning() { log_message "WARNING" "$YELLOW" "$1"; }
+# Convenience functions for logging messages at different levels
+log_info()      { log_message "INFO" "$CYAN" "$1"; }
+log_error()     { log_message "ERROR" "$RED" "$1"; }
+log_success()   { log_message "SUCCESS" "$GREEN" "$1"; }
+log_warning()   { log_message "WARNING" "$YELLOW" "$1"; }
 
+# Prompts the user for input with validation.
+#
+# Parameters:
+#   promptMessage: a string with the message to display to the user
+#   variableName: a string with the name of the global variable to set
+#   validation: a string with a regular expression to validate the input
+#
 prompt_input() {
-    # Prompts for user input and validates it
-    local prompt="$1"
-    local varName="$2"
+    local promptMessage="$1"
+    local variableName="$2"
+    local validation="$3"
 
     while true; do
-        read -r -p "$prompt" input
-        if [[ -n "$input" ]]; then
-            declare -g "$varName"="$input"
-            break
-        else
+        read -r -p "$promptMessage" input
+
+        # Check if the input is empty
+        if [[ -z "$input" ]]; then
             log_warning "Input cannot be empty. Please try again."
+
+        # Check if the input matches the validation regex
+        elif [[ -n "$validation" ]] && ! [[ "$input" =~ $validation ]]; then
+            log_warning "Invalid input format. Please try again."
+
+        # If the input is valid, set the global variable and break out of the loop
+        else
+            declare -g "$variableName"="$input"
+            break
         fi
     done
 }
@@ -514,6 +599,7 @@ reboot_system() {
 
 main() {
     # Main installation process
+    rotate_logs
     collect_user_inputs
     setAptSource
     updateSystem

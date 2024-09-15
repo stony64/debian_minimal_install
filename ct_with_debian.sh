@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ####################################################
-# Debian Container Install Script by Stony64
+# Debian Container Create Script by Stony64
 # Initial Release: 09/2024
 ####################################################
 
@@ -28,8 +28,6 @@ fi
 
 # Name of the script
 readonly SCRIPT_NAME="$(basename "$0")"
-# Directory where the script is located
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Version of the script
 readonly SCRIPT_VERSION="0.7.0"
 # Log file for the script
