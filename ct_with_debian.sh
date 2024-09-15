@@ -52,6 +52,8 @@ readonly ctGatewayIpv6="fd00:1234:abcd:10:3ea6:2fff:fe65:8fa7"  # Gateway IPv6 a
 ctHostname=""                                # Container name (will be prompted)
 ctId=$(pvesh get /cluster/nextid)            # Get next available container ID
 rootPassword=""                              # Root password (will be prompted)
+lastOctet=""                                 # Last octet of the IPv address
+confirmation=""                              # Confirmation variable
 diskSize="8"                                 # Disk size in GB
 ram="512"                                    # RAM size in MB
 swap="512"                                   # Swap size in MB
@@ -194,14 +196,14 @@ prompt_input() {
 # the inputs.
 #
 confirm_inputs() {
-    local confirmation
-
     while true; do
         log_info "Summary of inputs:"
         log_info "CT-Hostname: $ctHostname"
         log_info "Root-Password: $rootPassword"
+        log_info "Last-Octet-IPAddress: $lastOctet"
 
         prompt_input "Are these details correct? (y/n): " "confirmation" '^[yYnN]$'
+
         if [[ $confirmation =~ ^[yY]$ ]]; then
             # User confirmed the inputs; break out of the loop
             break
@@ -225,15 +227,14 @@ confirm_inputs() {
 # The inputs are validated as follows:
 # - Hostname: Alphanumeric characters and hyphens are allowed.
 # - Root password: Minimum 8 characters are required.
-# - Last octet of the IPv4 address: Must be between 1 and 254.
+# - Last octet of the IPv address: Must be between 1 and 254.
 #
-collect_user_inputs() {
-    local lastOctet
+collect_user_inputs() {    
     prompt_input "Enter the new hostname for the container (alphanumeric and hyphens allowed): " "ctHostname" '^[a-zA-Z0-9-]+$'
     prompt_input "Enter root-password for the container (min. 8 characters): " "rootPassword" '.{8,}'
 
     # Validate IPv4 last octet input (must be between 1 and 254)
-    prompt_input "Enter the last octet of the IPv4 address (e.g., x for 192.168.10.x): " "lastOctet" '^[1-9][0-9]?$|^1[0-9]{2}$|^2[0-4][0-9]$|^25[0-4]$'
+    prompt_input "Enter the last octet of the IPv4/6 address (e.g., x for 192.168.10.x): " "lastOctet" '^[1-9][0-9]?$|^1[0-9]{2}$|^2[0-4][0-9]$|^25[0-4]$'
 
     confirm_inputs
 
