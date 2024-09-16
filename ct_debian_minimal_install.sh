@@ -412,152 +412,87 @@ EOL
         return 1
     fi
 }
-<<<<<<<<<<<<<<  ✨ Codeium Command 🌟  >>>>>>>>>>>>>>>>
 
 # Creates a new user account with sudo privileges and sets up the SSH
-# directory and authorized keys.
+# directory and authorized keys. If the user already exists, it will
+# prompt the user whether to delete and recreate the user. The user will
+# be prompted for the contents of their public key file (.pub) and their
+# dotfiles from the GitHub repository. The dotfiles will be placed in the
+# user's home directory and in the root directory.
 #
-function setupNewUser(
-    username: string,
-    publicKey: string,
-    dotfilesUrl: string,
-): void {
-    log_info(`Creating new user account: ${username}`)
 setupNewUser() {
-    log_info "Creating new user account: $newUsername"
-    
     local -r username="$newUsername"
     local -r homeDir="/home/$username"
     local -r sshDir="$homeDir/.ssh"
 
-    const homeDir = `/home/${username}`
-    const sshDir = `${homeDir}/.ssh`
-
-    // Check if the user already exists
-    if (id(username) !== null) {
-        log_warning(`User ${username} already exists.`)
-
-        // Prompt to delete and recreate the existing user
-        const choice = prompt_input(
-            `Do you want to delete and recreate the user? (y/n): `,
-            'choice',
-            '^[yYnN]$'
-        )
-
-        switch (choice) {
-            case 'y':
-            case 'Y':
-                // Check sudoers file for syntax errors
-                if (visudo('-c', '/etc/sudoers') !== 0) {
-                    log_error('Syntax check of the sudoers file failed.')
-                    return
-    # Check if the user already exists
     if id "$username" &>/dev/null; then
         log_warning "User $username already exists."
         
-        # Prompt to delete and recreate the existing user
+        # Prompt the user to enter y or n to indicate whether to delete
+        # and recreate the user.
         prompt_input "Do you want to delete and recreate the user? (y/n): " "choice" '^[yYnN]$'
         case "$choice" in
             y | Y)
-                # Check sudoers file for syntax errors
+                # Syntax check the sudoers file and remove the user's entry
+                # from the sudoers file.
                 visudo -c /etc/sudoers || {
                     log_error "Syntax check of the sudoers file failed."
                     return 1
                 }
 
-                // Remove sudo privileges and delete user
-                sed('-i', `/^${username}/d`, '/etc/sudoers')
-                rm('-f', `/etc/sudoers.d/${username}`)
-                userdel('-r', username)
-                log_success(`User '${username}' deleted.`)
-                break
-            case 'n':
-            case 'N':
-                log_warning('User was not recreated.')
-                # Remove sudo privileges and delete user
                 sed -i "/^$username/d" /etc/sudoers
                 rm -f "/etc/sudoers.d/$username"
-                userdel -r "$username"
+                sudo userdel -r "$username"
                 log_success "User '$username' deleted."
                 ;;
             *)
                 log_warning "User was not recreated."
                 return
-            default:
-                log_error('Invalid input. Please enter y or n.')
-                return
-        }
                 ;;
         esac
     fi
 
-    # Create new user
+    # Create the user with a home directory and bash as the default shell
     useradd -m -s /bin/bash "$username"
+    # Set the password for the new user
     passwd "$username"
     
-    # SSH directory setup
+    # Create the SSH directory and set permissions
     mkdir -p "$sshDir"
     chown -R "$username:$username" "$sshDir"
     chmod 700 "$sshDir"
     
-    # Sudo privileges
+    # Add the user to the sudo group
     usermod -aG sudo "$username"
+    # Write the user's entry to the sudoers file
     echo "$username ALL=(ALL:ALL) ALL" | tee "/etc/sudoers.d/$username" >/dev/null
+    # Syntax check the sudoers file for the new user
     visudo -c /etc/sudoers.d/"$username" || {
         log_error "Syntax check failed for sudoers file for $username"
         return 1
     }
 
-    // Create new user
-    useradd('-m', '-s', '/bin/bash', username)
-    passwd(username)
-    # Prompt for SSH key
+    # Prompt the user for the contents of their public key file (.pub)
     prompt_input "Enter the contents of your public key file (.pub): " "publicKey" '^(ssh-(rsa|ed25519|ecdsa)-[A-Za-z0-9+\/]+)$'
-    echo "$publicKey" | tee "$sshDir/authorized_keys" >/dev/null
+    # Write the public key to the authorized_keys file and set permissions
+    echo "$publicKey" | sudo tee "$sshDir/authorized_keys" >/dev/null
     chmod 600 "$sshDir/authorized_keys"
 
-    // SSH directory setup
-    mkdir('-p', sshDir)
-    chown('-R', `${username}:${username}`, sshDir)
-    chmod(700, sshDir)
-    # Download dotfiles
+    # Get the user's dotfiles from the GitHub repository and place them in
+    # the user's home directory and in the root directory
     for file in "${HOSTFILES[@]}"; do
         curl -o "$homeDir/$file" "$DOTFILES_URL/$file"
         chown "$username:$username" "$homeDir/$file"
     done
 
-    // Sudo privileges
-    usermod('-aG', 'sudo', username)
-    echo(`${username} ALL=(ALL:ALL) ALL`) | tee(`/etc/sudoers.d/${username}`) > /dev/null
-    if (visudo('-c', `/etc/sudoers.d/${username}`) !== 0) {
-        log_error(`Syntax check failed for sudoers file for ${username}`)
-        return
-    }
     for file in "${HOSTFILES[@]}"; do
         curl -o "/root/$file" "$DOTFILES_URL/$file"
         chown "root:root" "/root/$file"
     done
 
-    // SSH key
-    echo(publicKey) | tee(`${sshDir}/authorized_keys`) > /dev/null
-    chmod(600, `${sshDir}/authorized_keys`)
-
-    // Download dotfiles
-    for (const file of HOSTFILES) {
-        curl('-o', `${homeDir}/${file}`, `${dotfilesUrl}/${file}`)
-        chown(`${username}:${username}`, `${homeDir}/${file}`)
-    }
-
-    for (const file of HOSTFILES) {
-        curl('-o', `/root/${file}`, `${dotfilesUrl}/${file}`)
-        chown('root:root', `/root/${file}`)
-    }
-
-    log_success(`User ${username} created successfully with sudo privileges. Dotfiles downloaded.`)
-    log_success "User $username created successfully with sudo privileges. Dotfiles downloaded."
+    log_success "User $username created successfully with sudo privileges."
 }
 
-<<<<<<<  c93d6548-a55c-48d4-9f45-ea706cfe5b33  >>>>>>>
 # Function to clean up variables and system
 # ------------------------------------------------
 # This function resets the script variables and cleans up the system.
