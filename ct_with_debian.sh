@@ -257,7 +257,7 @@ create_lxc_container() {
         --net0 name="eth0",bridge="$netBridge",ip="$ipv4/24",gw="$ctGatewayIpv4",ip6="$ipv6/64",gw6="$ctGatewayIpv6" \
         --rootfs "$storage:$diskSize" \
         --features "mount=nfs;cifs,nesting=1" \
-        --onboot "1" \
+        --onboot "0" \
         --start 1; then
         log_success "Container $ctId created successfully."
     else
@@ -271,8 +271,8 @@ create_lxc_container() {
 # @returns {boolean} true if the container is running, false otherwise
 #
 setTempSsh() {
-    log_info "Waiting 10 seconds for the container to start..."
-    sleep 10
+    log_info "Waiting 15 seconds for the container to start..."
+    sleep 15
 
     # Check if the container is running
     local containerStatus
