@@ -385,7 +385,6 @@ ClientAliveInterval 600                                                         
 ClientAliveCountMax 2                                                               # Set the maximum number of client alive messages
 LogLevel VERBOSE                                                                    # Set the log level
 AllowUsers $newUsername                                                             # Set the allowed users
-AllowGroups sshusers                                                                # Set the allowed groups
 AllowTcpForwarding no                                                               # Disable TCP forwarding
 X11Forwarding no                                                                    # Disable X11 forwarding
 PermitTunnel no                                                                     # Disable tunneling
@@ -395,7 +394,6 @@ Ciphers aes256-gcm@openssh.com,chacha20-poly1305@openssh.com,aes256-ctr         
 MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com                    # Set the MACs
 KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256     # Set the key exchange algorithms
 HostbasedAuthentication no                                                          # Disable host-based authentication
-RhostsRSAAuthentication no                                                          # Disable RhostsRSA authentication
 Match User root                                                                     # Disable root login for the root user
     AllowTcpForwarding no
     X11Forwarding no
@@ -570,7 +568,6 @@ main() {
     updateSystem
     installRequiredPackages
     setupConsoleAndKeyboard
-#    collect_user_inputs
     setupSsh
     create_advanced_ssh_config
     setupNewUser
