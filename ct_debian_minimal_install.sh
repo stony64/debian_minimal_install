@@ -129,7 +129,7 @@ rotate_logs() {
 log_message() {
     local logLevel="$1"
     local logColor="$2"
-    local logMessage="$3"
+    local logMessage="${3:-}"
     local logTimestamp
     logTimestamp="$(date '+%Y-%m-%d %H:%M:%S')"
 
@@ -201,7 +201,7 @@ confirm_inputs() {
 #
 collect_user_inputs() {
     # Prompt the user for the new username, the username should be alphanumeric and must be at least one character long.
-    prompt_input "Enter the new Username (alphanumeric): " "newUsername" '^[a-zA-Z0-9]+$'
+    prompt_input "Enter the new Username (alphanumeric): " "newUsername"
 
     # Prompt the user for the new SSH port, the port should be a number between 1 and 65535.
     prompt_input "Enter the new SSH port (1-65535): " "sshPort" '^[1-9][0-9]{0,4}$'
@@ -223,7 +223,7 @@ setAptSource() {
     cp "$aptSourceListFile" "$aptSourceListBackupFile" && log_success "Backup created." || log_warning "Backup failed."
     
     cat <<EOL >"$aptSourceListFile"
-deb http://deb.debian.org/debian bookworm main contrib non-free non-ree-firmware
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
 deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
 deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
 # Backports are _not_ enabled by default.
@@ -330,6 +330,10 @@ setupConsoleAndKeyboard() {
 setupSsh() {
     log_info "Configuring SSH service..."
 
+    systemctl stop ssh
+    systemctl stop sshd
+    sleep 10
+
     # Back up the SSH configuration file
     local sshConfigFile="/etc/ssh/sshd_config"
     cp "$sshConfigFile" "${sshConfigFile}.bak" && log_success "SSH config backed up."
@@ -406,6 +410,7 @@ EOL
 
     # Restart the SSH service to apply new configuration
     log_info "Restarting the SSH service to apply new configuration..."
+    systemctl start sshd.sercice
     if systemctl start sshd.service; then
         systemctl reload sshd.service
         log_success "SSH configuration updated successfully and SSH service started."
@@ -423,7 +428,6 @@ EOL
 # user's home directory and in the root directory.
 #
 setupNewUser() {
-#    local -r username="$newUsername"
     local -r homeDir="/home/$newUsername"
     local -r sshDir="$homeDir/.ssh"
 
@@ -460,9 +464,12 @@ setupNewUser() {
     passwd "$newUsername"
     
     # Create the SSH directory and set permissions
+    chmod 700 /home/$newUsername
+    chown $newUsername:$newUsername /home/$newUsername
+
     mkdir -p "$sshDir"
-    chown -R "$newUsername:$newUsername" "$sshDir"
     chmod 700 "$sshDir"
+    chown -R "$newUsername:$newUsername" "$sshDir"
     
     # Add the user to the sudo group
     usermod -aG sudo "$newUsername"
@@ -475,12 +482,12 @@ setupNewUser() {
     }
 
     # Prompt the user for the contents of their public key file (.pub)
-    #prompt_input "Enter the contents of your public key file (.pub): " "publicKey" '^(ssh-(rsa|ed25519|ecdsa)-[A-Za-z0-9+\/]+)$'
     prompt_input "Enter the contents of your public key file (.pub): " "publicKey"
     
     # Write the public key to the authorized_keys file and set permissions
-    echo "$publicKey" | sudo tee "$sshDir/authorized_keys" >/dev/null
+    echo "$publicKey" | tee "$sshDir/authorized_keys" >/dev/null
     chmod 600 "$sshDir/authorized_keys"
+    chown $newUsername:$newUsername "$sshDir"/authorized_keys
 
     # Get the user's dotfiles from the GitHub repository and place them in
     # the user's home directory and in the root directory
