@@ -45,9 +45,9 @@ sshPort=""       # The port number for SSH access
 confirmation="" # Confirmation variable
 newLocales="de_DE.UTF-8" # locales to Enable
 
-export LANGUAGE=en_US.UTF-8
-export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
+#export LANGUAGE=en_US.UTF-8
+#export LANG=en_US.UTF-8
+#export LC_ALL=en_US.UTF-8
 
 # Set colors for output
 # ----------------------
@@ -284,9 +284,9 @@ setupLocales() {
     locale-gen
     update-locale LANG="$newLocales"
     
-    export LANGUAGE=$newLocales
-    export LANG=$newLocales
-    export LC_ALL=$newLocales
+ #   export LANGUAGE=$newLocales
+ #   export LANG=$newLocales
+ #   export LC_ALL=$newLocales
 
     log_success "Locales set successfully!"
 }
@@ -423,12 +423,12 @@ EOL
 # user's home directory and in the root directory.
 #
 setupNewUser() {
-    local -r username="$newUsername"
-    local -r homeDir="/home/$username"
+#    local -r username="$newUsername"
+    local -r homeDir="/home/$newUsername"
     local -r sshDir="$homeDir/.ssh"
 
-    if id "$username" &>/dev/null; then
-        log_warning "User $username already exists."
+    if id "$newUsername" &>/dev/null; then
+        log_warning "User $newUsername already exists."
         
         # Prompt the user to enter y or n to indicate whether to delete
         # and recreate the user.
@@ -442,10 +442,10 @@ setupNewUser() {
                     return 1
                 }
 
-                sed -i "/^$username/d" /etc/sudoers
-                rm -f "/etc/sudoers.d/$username"
-                userdel -r "$username"
-                log_success "User '$username' deleted."
+                sed -i "/^$newUsername/d" /etc/sudoers
+                rm -f "/etc/sudoers.d/$newUsername"
+                userdel -r "$newUsername"
+                log_success "User '$newUsername' deleted."
                 ;;
             *)
                 log_warning "User was not recreated."
@@ -455,22 +455,22 @@ setupNewUser() {
     fi
 
     # Create the user with a home directory and bash as the default shell
-    useradd -m -s /bin/bash "$username"
+    useradd -m -s /bin/bash "$newUsername"
     # Set the password for the new user
-    passwd "$username"
+    passwd "$newUsername"
     
     # Create the SSH directory and set permissions
     mkdir -p "$sshDir"
-    chown -R "$username:$username" "$sshDir"
+    chown -R "$newUsername:$newUsername" "$sshDir"
     chmod 700 "$sshDir"
     
     # Add the user to the sudo group
-    usermod -aG sudo "$username"
+    usermod -aG sudo "$newUsername"
     # Write the user's entry to the sudoers file
-    echo "$username ALL=(ALL:ALL) ALL" | tee "/etc/sudoers.d/$username" >/dev/null
+    echo "$newUsername ALL=(ALL:ALL) ALL" | tee "/etc/sudoers.d/$newUsername" >/dev/null
     # Syntax check the sudoers file for the new user
-    visudo -c /etc/sudoers.d/"$username" || {
-        log_error "Syntax check failed for sudoers file for $username"
+    visudo -c /etc/sudoers.d/"$newUsername" || {
+        log_error "Syntax check failed for sudoers file for $newUsername"
         return 1
     }
 
@@ -486,7 +486,7 @@ setupNewUser() {
     # the user's home directory and in the root directory
     for file in "${HOSTFILES[@]}"; do
         curl -o "$homeDir/$file" "$DOTFILES_URL/$file"
-        chown "$username:$username" "$homeDir/$file"
+        chown "$newUsername:$newUsername" "$homeDir/$file"
     done
 
     for file in "${HOSTFILES[@]}"; do
@@ -494,7 +494,7 @@ setupNewUser() {
         chown "root:root" "/root/$file"
     done
 
-    log_success "User $username created successfully with sudo privileges."
+    log_success "User $newUsername created successfully with sudo privileges."
 }
 
 # Function to clean up variables and system
