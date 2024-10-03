@@ -129,7 +129,7 @@ rotate_logs() {
 log_message() {
     local logLevel="$1"
     local logColor="$2"
-    local logMessage="${3:-}"
+    local logMessage="$3"
     local logTimestamp
     logTimestamp="$(date '+%Y-%m-%d %H:%M:%S')"
 
@@ -151,7 +151,7 @@ log_warning()   { log_message "WARNING" "$YELLOW" "$1"; }
 prompt_input() {
     local promptMessage="$1"
     local variableName="$2"
-    local validation="$3"
+    local validation="${3:-}"
 
     while true; do
         read -r -p "$promptMessage" input
