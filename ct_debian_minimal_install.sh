@@ -330,10 +330,6 @@ setupConsoleAndKeyboard() {
 setupSsh() {
     log_info "Configuring SSH service..."
 
-    systemctl stop ssh
-    systemctl stop sshd
-    sleep 10
-
     # Back up the SSH configuration file
     local sshConfigFile="/etc/ssh/sshd_config"
     cp "$sshConfigFile" "${sshConfigFile}.bak" && log_success "SSH config backed up."
@@ -355,7 +351,6 @@ create_advanced_ssh_config() {
     local newHostname="$(hostname)"
     local SSH_CONFIG_DIR="/etc/ssh/sshd_config.d"
     local SSH_CONFIG_FILE="$SSH_CONFIG_DIR/$newHostname.conf"
-
 
     log_info "Creating advanced SSH configuration file..."
 
@@ -410,7 +405,9 @@ EOL
 
     # Restart the SSH service to apply new configuration
     log_info "Restarting the SSH service to apply new configuration..."
-    systemctl start sshd.sercice
+    # sometimes it fail with new port-settings
+    apt purge openssh-server -y
+    apt install openssh-server -y
     if systemctl start sshd.service; then
         systemctl reload sshd.service
         log_success "SSH configuration updated successfully and SSH service started."
