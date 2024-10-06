@@ -450,6 +450,7 @@ setupNewUser() {
     # Create the user with a home directory and bash as the default shell
     useradd -m -s /bin/bash "$newUsername"
     # Set the password for the new user
+    log_info "Password for new User $newUsername:"
     passwd "$newUsername"
     
     # Create the SSH directory and set permissions
