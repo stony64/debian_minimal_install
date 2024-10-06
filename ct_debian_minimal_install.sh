@@ -40,14 +40,10 @@ readonly HOSTFILES=(.bashrc .bash_aliases .bash_functions .nanorc)              
 # the user during the script execution. They are declared here
 # so that they can be accessed in any function.
 #
-newUsername=""  # The username to create for the new user
-sshPort=""       # The port number for SSH access
-confirmation="" # Confirmation variable
-newLocales="de_DE.UTF-8" # locales to Enable
-
-#export LANGUAGE=en_US.UTF-8
-#export LANG=en_US.UTF-8
-#export LC_ALL=en_US.UTF-8
+newUsername=""              # The username to create for the new user
+sshPort=""                  # The port number for SSH access
+confirmation=""             # Confirmation variable
+newLocales="de_DE.UTF-8"    # locales to Enable
 
 # Set colors for output
 # ----------------------
@@ -283,10 +279,6 @@ setupLocales() {
 
     locale-gen
     update-locale LANG="$newLocales"
-    
- #   export LANGUAGE=$newLocales
- #   export LANG=$newLocales
- #   export LC_ALL=$newLocales
 
     log_success "Locales set successfully!"
 }
